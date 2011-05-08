@@ -1,0 +1,39 @@
+
+RFCommMultiplexer for Android
+=============================
+
+sda kasjhd askdjh asdjkh adskjh adskgh akjdshg sjhdfgaksdjhgf jsdgjshdg 
+sda kasjhd askdjh asdjkh adskjh adskgh akjdshg sjhdfgaksdjhgf jsdgjshdg 
+sda kasjhd askdjh asdjkh adskjh adskgh akjdshg sjhdfgaksdjhgf jsdgjshdg 
+sda kasjhd askdjh asdjkh adskjh adskgh akjdshg sjhdfgaksdjhgf jsdgjshdg 
+sda kasjhd askdjh asdjkh adskjh adskgh akjdshg sjhdfgaksdjhgf jsdgjshdg 
+
+
+Info
+----
+
+sda kasjhd askdjh asdjkh adskjh adskgh akjdshg sjhdfgaksdjhgf jsdgjshdg 
+sda kasjhd askdjh asdjkh adskjh adskgh akjdshg sjhdfgaksdjhgf jsdgjshdg 
+sda kasjhd askdjh asdjkh adskjh adskgh akjdshg sjhdfgaksdjhgf jsdgjshdg 
+sda kasjhd askdjh asdjkh adskjh adskgh akjdshg sjhdfgaksdjhgf jsdgjshdg 
+sda kasjhd askdjh asdjkh adskjh adskgh akjdshg sjhdfgaksdjhgf jsdgjshdg 
+
+
+Initial build setup
+-------------------
+
+Building requires Android SDK version-10, Scala-2.8.1.final, JDK 6 and Ant 1.8.2.
+
+$ cp local.properties.sample local.properties
+
+- Adjust SDK path settings in "local.properties" if necessary
+
+
+Building
+--------
+
+$ ./make
+
+This will build "bin/rfcommmultiplexer.jar" which can be placed in the libs/ folder of any Android 2.2+ project.
+
+

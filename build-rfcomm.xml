@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="rfcomm" default="build">
+  <target name="build">
+    <delete file="bin/rfcommmultiplexer.jar" />
+    <jar destfile="bin/rfcommmultiplexer.jar" 
+         basedir="bin/classes">
+      <manifest>
+        <attribute name="Implementation-Title" value="rfcommmultiplexer.jar"/>
+        <attribute name="Implementation-Version" value="1.0.0"/>
+      </manifest>
+    </jar>
+  </target>
+</project>
+

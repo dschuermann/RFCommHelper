@@ -1,0 +1,38 @@
+package btshare;
+
+option java_package = "org.timur.btshare";
+option java_outer_classname = "BtShare";
+
+option optimize_for = LITE_RUNTIME;
+
+message Message {
+  required string command     = 1;
+  required string fromName    = 20;
+  required string fromAddr    = 21;
+
+  required int32  argCount    = 2;
+
+  optional string arg1        = 3;
+  optional string arg2        = 4;
+  optional string arg3        = 5;
+  optional string arg4        = 6;
+  optional bytes  argBytes    = 7;
+  optional string toName      = 22;
+  optional string toAddr      = 23;
+
+//  optional bool   arg1Bool    = 13;
+//  optional float  arg1Float   = 14;
+//  optional double arg1Double  = 15;
+//  optional int64  arg1Long    = 16;
+}
+
+//message Response {
+//  required string responseType   = 1000;
+//  optional string responseString = 1001;
+//  optional int32  responseInt    = 1002;
+//  optional bool   responseBool   = 1003;
+//  optional float  responseFloat  = 1004;
+//  optional double responseDouble = 1005;
+//  optional int64  responseLong   = 1006;
+//}
+
