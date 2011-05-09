@@ -99,7 +99,7 @@ class RFCommMultiplexerService extends android.app.Service {
   @volatile private var mConnectedThread: ConnectedThread = null
   @volatile private var mState = RFCommMultiplexerService.STATE_NONE
 
-  // connectedDevicesMap contains all directly connected devices and their connectedThread objects
+  // connectedDevicesMap contains all directly connected devices mapped to their connectedThread objects
   val connectedDevicesMap = new HashMap[BluetoothDevice,ConnectedThread]
 
   // sendMsgCounterMap keeps track of the msg-counters for each known device
