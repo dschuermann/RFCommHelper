@@ -15,9 +15,10 @@
  * limitations under the License.
  */
 
+// RFCommMultiplexerService is an Android app service written in Scala 2.8.x
+
 package org.timur.btshare
 
-import util.control.Breaks._
 import scala.collection.mutable.HashMap
 
 import java.io.IOException
@@ -41,9 +42,6 @@ import android.bluetooth.BluetoothSocket
 
 import com.google.protobuf.CodedOutputStream
 import com.google.protobuf.CodedInputStream
-import org.timur.btshare._
-
-// RFCommMultiplexerService is an Android service that is written in Scala 2.8.1+
 
 object RFCommMultiplexerService {
   val STATE_NONE = 0       // doing nothing
@@ -611,14 +609,13 @@ class RFCommMultiplexerService extends android.app.Service {
         while(running) {
           //if(D) Log.i(TAG, "ConnectedThread run " + socketType+" read size...")
           val size = codedInputStream.readInt32() // may block a long while
-          if(!running) break
-
-          //if(D) Log.i(TAG, "ConnectedThread run " + socketType+" read size="+size+" socket="+socket)
-          if(size>0) {
-            val rawdata = codedInputStream.readRawBytes(size) // may block, but only very short
-            if(!running) break;
-
-            processReceivedRawData(rawdata)
+          if(running) {
+            //if(D) Log.i(TAG, "ConnectedThread run " + socketType+" read size="+size+" socket="+socket)
+            if(size>0) {
+              val rawdata = codedInputStream.readRawBytes(size) // may block, but only very short
+              if(running)
+                processReceivedRawData(rawdata)
+            }
           }
         }
       } catch {
