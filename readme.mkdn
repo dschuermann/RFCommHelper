@@ -2,7 +2,7 @@
 RFCommMultiplexer for Android
 =============================
 
-RFCommMultiplexerService is a generic Android service that can be used to develop Bluetooth multi-device applications.
+RFCommMultiplexerService is a generic Android service that can be used to develop multi-device Bluetooth applications.
 
 RFCommMultiplexerService...
 
@@ -42,7 +42,7 @@ How to use
 
 A ready-to-use "rfcommmultiplexer.jar" is provided in the "bin/" folder.
 
-In order to make use of this service, you need to copy "bin/rfcommmultiplexer.jar" and "libs/protobuf-java-2.3.0.jar" to the "libs/" folder of your Android project.
+In order to make use of this service, you need to copy "bin/rfcommmultiplexer.jar" and "libs/protobuf-java-2.3.0.jar" to your Android project "libs/" folder.
 
 [Add here: Info on how to use the API]
 
