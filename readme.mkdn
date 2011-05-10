@@ -5,13 +5,14 @@ RFCommMultiplexer for Android
 RFCommMultiplexerService is a generic Android service that can be used to develop multidevice applications.
 
 RFCommMultiplexerService...
-- simplifies the process of establishing Bluetooth connectivity
-- acts as a hub for other devices, to connect
-- manages multiple Bluetooth RFComm connections in the background
-- forwards messages targeted towards other devices in the network
-- allows the implementation of application specific protocols
-- makes use of Google protobuf to implement message packaging
-- is written in Scala 2.8.x.
+
+* simplifies the process of establishing Bluetooth connectivity
+* acts as a hub for other devices, to connect
+* manages multiple Bluetooth RFComm connections in the background
+* forwards messages targeted towards other devices in the network
+* allows the implementation of application specific protocols
+* makes use of Google protobuf to implement message packaging
+* is written in Scala 2.8.x.
 
 Instructions on how to build from source can be found below. 
 A ready-to-use "rfcommmultiplexer.jar" is provided in the "bin/" folder.
@@ -23,7 +24,7 @@ In order to make use of this service, you need to copy "bin/rfcommmultiplexer.ja
 Initial build setup
 -------------------
 
-Building requires Android SDK version-10, [http://www.scala-lang.org/downloads/distrib/files/scala-2.8.1.final.tgz](Scala-2.8.1.final), JDK 6 and Ant 1.8.2.
+Building requires Android SDK version-10, [Scala-2.8.1.final](http://www.scala-lang.org/downloads/distrib/files/scala-2.8.1.final.tgz), JDK 6 and Ant 1.8.2.
 
 
 $ cp local.properties.sample local.properties
