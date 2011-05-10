@@ -34,7 +34,7 @@ Building
 
 $ ./make
 
-This will build "bin/rfcommmultiplexer.jar" which can be placed in the "libs/"-folder of a Android 2.2+ project.
+This will build "bin/rfcommmultiplexer.jar" which can be placed in the "libs/"-folder of your Android 2.2+ project.
 
 
 How to use
