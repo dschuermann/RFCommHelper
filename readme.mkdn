@@ -12,7 +12,8 @@ RFCommMultiplexer service...
 * forwards messages targeted towards other devices in the network
 * allows the implementation of application specific protocol extensions
 * makes use of Google protobuf to implement the packaging of messages
-* is written in Scala 2.8.x.
+* is written in Scala 2.8.x
+* can be deployed on Android 2.2+
 
 Instructions on how to build from source can be found below. 
 
