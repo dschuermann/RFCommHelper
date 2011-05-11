@@ -10,8 +10,8 @@ RFCommMultiplexer service...
 * acts as a hub for other devices to connect
 * manages multiple Bluetooth RFComm connections in the background
 * forwards messages targeted towards other devices in the network
-* allows the implementation of application specific protocols
-* makes use of Google protobuf to implement message packaging
+* allows the implementation of application specific protocol extensions
+* makes use of Google protobuf to implement the packaging of messages
 * is written in Scala 2.8.x.
 
 Instructions on how to build from source can be found below. 
