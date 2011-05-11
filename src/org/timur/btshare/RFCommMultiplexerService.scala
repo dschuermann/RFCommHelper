@@ -57,6 +57,7 @@ object RFCommMultiplexerService {
   val RECEIVED_PONG = 6
   val DEVICE_DISCONNECT = 7
   val CONNECTION_FAILED = 8
+  val CONNECTION_START = 9
 
   // Key names received from the RFCommMultiplexerService Handler
   val DEVICE_NAME = "device_name"
@@ -167,17 +168,26 @@ class RFCommMultiplexerService extends android.app.Service {
   // called by the activity: options menu "connect" -> onActivityResult() -> connectDevice()
   // called by the activity: as a result of NfcAdapter.ACTION_NDEF_DISCOVERED
   def connect(newRemoteDevice:BluetoothDevice, secure:Boolean, complainFail:Boolean=true) :Unit = synchronized {
-    if(D) Log.i(TAG, "connect to: "+newRemoteDevice.getAddress()+" name="+newRemoteDevice.getName())
-
     if(newRemoteDevice==null) {
       if(D) Log.i(TAG, "connect() newRemoteDevice==null, give up")
       return
     }
 
+    if(D) Log.i(TAG, "connect to: "+newRemoteDevice.getAddress()+" name="+newRemoteDevice.getName())
+
     // make sure newRemoteDevice is NOT already listed in connectedDevicesMap
     if(isConnectedDevices(newRemoteDevice.getAddress())) {
       if(D) Log.i(TAG, "connect() newRemoteDevice is already directly connected, give up")
       return
+    }
+
+    if(complainFail) {
+      val msg = activityMsgHandler.obtainMessage(RFCommMultiplexerService.CONNECTION_START)
+      val bundle = new Bundle()
+      bundle.putString(RFCommMultiplexerService.DEVICE_ADDR, newRemoteDevice.getAddress())
+      bundle.putString(RFCommMultiplexerService.DEVICE_NAME, newRemoteDevice.getName())
+      msg.setData(bundle)
+      activityMsgHandler.sendMessage(msg)
     }
     
     // Start the thread to connect with the given device
