@@ -2,9 +2,9 @@
 RFCommMultiplexer for Android
 =============================
 
-RFCommMultiplexerService is a generic Android service that can be used to develop multi-device Bluetooth applications.
+RFCommMultiplexer is a generic Android service that can be used to develop multi-device Bluetooth applications.
 
-RFCommMultiplexerService...
+RFCommMultiplexer service...
 
 * simplifies the process of establishing a Bluetooth connection
 * acts as a hub for other devices to connect
