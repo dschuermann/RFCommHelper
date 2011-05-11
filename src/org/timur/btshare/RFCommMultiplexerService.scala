@@ -56,6 +56,7 @@ object RFCommMultiplexerService {
   val MESSAGE_TOAST = 5
   val RECEIVED_PONG = 6
   val DEVICE_DISCONNECT = 7
+  val CONNECTION_FAILED = 8
 
   // Key names received from the RFCommMultiplexerService Handler
   val DEVICE_NAME = "device_name"
@@ -166,7 +167,7 @@ class RFCommMultiplexerService extends android.app.Service {
   // called by the activity: options menu "connect" -> onActivityResult() -> connectDevice()
   // called by the activity: as a result of NfcAdapter.ACTION_NDEF_DISCOVERED
   def connect(newRemoteDevice:BluetoothDevice, secure:Boolean, complainFail:Boolean=true) :Unit = synchronized {
-    if(D) Log.i(TAG, "connect to: " + newRemoteDevice)
+    if(D) Log.i(TAG, "connect to: "+newRemoteDevice.getAddress()+" name="+newRemoteDevice.getName())
 
     if(newRemoteDevice==null) {
       if(D) Log.i(TAG, "connect() newRemoteDevice==null, give up")
@@ -326,21 +327,28 @@ class RFCommMultiplexerService extends android.app.Service {
 
     // Send a failure toast back to the Activity
     var remoteDevice:BluetoothDevice = null
-    //var btAddrString:String = null
-    var btNameString:String = null
+    //var btNameString:String = null
     if(socket!=null) {
       remoteDevice = socket.getRemoteDevice()
       if(remoteDevice!=null) {
-        //btAddrString = remoteDevice.getAddress()
-        btNameString = remoteDevice.getName()
+        val btAddrString = remoteDevice.getAddress()
+        val btNameString = remoteDevice.getName()
         connectedDevicesMap -= remoteDevice
+
+        // tell the activity that the connection was lost
+        val msg = activityMsgHandler.obtainMessage(RFCommMultiplexerService.DEVICE_DISCONNECT)
+        val bundle = new Bundle()
+        bundle.putString(RFCommMultiplexerService.DEVICE_ADDR, btAddrString)
+        bundle.putString(RFCommMultiplexerService.DEVICE_NAME, btNameString)
+        msg.setData(bundle)
+        activityMsgHandler.sendMessage(msg)
       }
     }
 
     if(connectedDevicesMap.size>0) {
-      sendToast(btNameString+" connection was lost")
+      //sendToast(btNameString+" connection was lost")
     } else { 
-      sendToast(btNameString+" connection was lost - now fully disconnected")
+      //sendToast(btNameString+" connection was lost - now fully disconnected")
       setState(RFCommMultiplexerService.STATE_LISTEN)
     }
   }
@@ -446,7 +454,7 @@ class RFCommMultiplexerService extends android.app.Service {
     }
 
     override def run() {
-      if(D) Log.i(TAG, "BEGIN mConnectThread SocketType:" + mSocketType)
+      //if(D) Log.i(TAG, "BEGIN mConnectThread SocketType:" + mSocketType)
       setName("ConnectThread" + mSocketType)
 
       // Always cancel discovery because it will slow down a connection
@@ -468,7 +476,7 @@ class RFCommMultiplexerService extends android.app.Service {
           }
           if(complainFail) {
             // need to tell the activity that the connection has failed - and that the connect-animation/busy-image can be disabled/made invisible
-            val msg = activityMsgHandler.obtainMessage(RFCommMultiplexerService.DEVICE_DISCONNECT)
+            val msg = activityMsgHandler.obtainMessage(RFCommMultiplexerService.CONNECTION_FAILED)
             val bundle = new Bundle()
             bundle.putString(RFCommMultiplexerService.DEVICE_ADDR, remoteDevice.getAddress())
             bundle.putString(RFCommMultiplexerService.DEVICE_NAME, remoteDevice.getName())
