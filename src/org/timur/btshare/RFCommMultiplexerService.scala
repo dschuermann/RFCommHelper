@@ -25,6 +25,8 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.UUID
+import java.util.LinkedList
+import java.util.ArrayList
 
 import android.util.Log
 import android.content.Context
@@ -66,6 +68,11 @@ object RFCommMultiplexerService {
   val TOAST = "toast"
 } 
 
+class QueueMessage(createTimeMs:Long=0l,strmsg:String=null) {
+  def createTimeMs() :Long = { return createTimeMs }
+  def strmsg() :String = { return strmsg }
+}
+
 class RFCommMultiplexerService extends android.app.Service {
   private val TAG = "RFCommMultiplexerService"
   private val D = true
@@ -85,11 +92,28 @@ class RFCommMultiplexerService extends android.app.Service {
   protected var context:Context = null
   protected var activityMsgHandler:Handler = null
 
+  private val queueMessageLinkedList = new LinkedList[QueueMessage]()
+
+  def getAllMsgsNewerThan(lastMsgTimeMillis:Long) :ArrayList[QueueMessage] = {
+    val retList = new ArrayList[QueueMessage]()
+    queueMessageLinkedList synchronized {
+      val listIterator = queueMessageLinkedList.listIterator(0) 
+      while(listIterator.hasNext()) {
+        val msg = listIterator.next()
+        if(msg.createTimeMs()>lastMsgTimeMillis)
+          retList.add(msg)
+      }
+    }
+    return retList
+  }
+
+
   def setContext(context:Context) {
     this.context = context
   }
 
   def setActivityMsgHandler(activityMsgHandler:Handler) {
+    // a simple android.os.Handler, defined in the activity
     this.activityMsgHandler = activityMsgHandler
   }
 
@@ -175,13 +199,14 @@ class RFCommMultiplexerService extends android.app.Service {
 
     if(D) Log.i(TAG, "connect to: "+newRemoteDevice.getAddress()+" name="+newRemoteDevice.getName())
 
-    // make sure newRemoteDevice is NOT already listed in connectedDevicesMap
+    // if newRemoteDevice is already listed in connectedDevicesMap, then we do nothing
     if(isConnectedDevices(newRemoteDevice.getAddress())) {
       if(D) Log.i(TAG, "connect() newRemoteDevice is already directly connected, give up")
       return
     }
 
     if(complainFail) {
+      // todo: "complainFail" is actually used as "report_connect/disconnect-actions_via_activityMsgHandler"
       val msg = activityMsgHandler.obtainMessage(RFCommMultiplexerService.CONNECTION_START)
       val bundle = new Bundle()
       bundle.putString(RFCommMultiplexerService.DEVICE_ADDR, newRemoteDevice.getAddress())
@@ -568,16 +593,18 @@ class RFCommMultiplexerService extends android.app.Service {
 
       } else {
         // for me OR for all: do process
-        if(D) Log.i(TAG, "ConnectedThread run: read cmd="+cmd+" fromName="+fromName+" fromAddr="+fromAddr+" toAddr="+toAddr+" receivedSendMsgCounter="+receivedSendMsgCounter)
+        if(D) Log.i(TAG, "ConnectedThread run: read1 cmd="+cmd+" fromName="+fromName+" fromAddr="+fromAddr+" toAddr="+toAddr+" receivedSendMsgCounter="+receivedSendMsgCounter)
 
         val toName = btMessage.getToName()
         val arg1 = btMessage.getArg1()  // the text message
-        if(D) Log.i(TAG, "ConnectedThread run: read arg1="+arg1+" toName="+toName)
+        //if(D) Log.i(TAG, "ConnectedThread run: read arg1="+arg1+" toName="+toName)
 
         // plug-in app-specific behaviour
         if(!processBtMessage(cmd, arg1, fromAddr, btMessage, codedInputStream)) {
 
           // basic behaviour: ping, pong + strmsg
+          if(D) Log.i(TAG, "ConnectedThread run: basic behaviour arg1="+arg1+" toName="+toName)
+
           if(cmd.equals("ping")) {
             var thisSendMsgCounter = 0
             synchronized { 
@@ -594,7 +621,21 @@ class RFCommMultiplexerService extends android.app.Service {
 
           } else if(cmd.equals("strmsg")) {
             // todo: classcast exception if somethngs fishy with arg1 ?
-            activityMsgHandler.obtainMessage(RFCommMultiplexerService.MESSAGE_READ, -1, -1, fromName+": "+arg1).sendToTarget()
+            if(D) Log.i(TAG, "ConnectedThread run: strmsg arg1="+arg1+" toName="+toName)
+            val strmsg = fromName+": "+arg1
+            //activityMsgHandler.obtainMessage(RFCommMultiplexerService.MESSAGE_READ, -1, -1, strmsg).sendToTarget()
+            // issue fixed: when the device sleeps (or when the activity is unloaded, say, while in the background), MESSAGE_READ WILL NOT ARRIVE
+            // so we queue strmsg's and use obtainMessage().sendToTarget() only to notify the activity
+            val msg = new QueueMessage(System.currentTimeMillis(),strmsg)
+            queueMessageLinkedList synchronized {
+              queueMessageLinkedList.add(msg)
+              while(queueMessageLinkedList.size()>10)
+                queueMessageLinkedList.removeFirst()
+            }
+            if(D) Log.i(TAG, "ConnectedThread run: strmsg added queueMessageLinkedList.size()="+queueMessageLinkedList.size())
+
+            // the activity will fetch queued msgs immediately, or whenever it is started or wakes up from sleep
+            activityMsgHandler.obtainMessage(RFCommMultiplexerService.MESSAGE_READ, -1, -1, null).sendToTarget()
 
           } else {
             if(D) Log.i(TAG, "ConnectedThread run - received unknown cmd="+cmd)
