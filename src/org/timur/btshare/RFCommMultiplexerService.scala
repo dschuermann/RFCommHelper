@@ -647,7 +647,7 @@ class RFCommMultiplexerService extends android.app.Service {
 
             // the activity will fetch queued msgs immediately, or whenever it is started or wakes up from sleep
             activityMsgHandler.obtainMessage(RFCommMultiplexerService.MESSAGE_READ, -1, -1, null).sendToTarget()
-// todo do the same at DEVICE_DISCONNECT
+
           } else {
             if(D) Log.i(TAG, "ConnectedThread run - received unknown cmd="+cmd)
             // todo: must forward "unknown type" message to activity
