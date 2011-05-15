@@ -68,8 +68,10 @@ object RFCommMultiplexerService {
   val TOAST = "toast"
 } 
 
-class QueueMessage(createTimeMs:Long=0l,strmsg:String=null) {
+class QueueMessage(createTimeMs:Long=0l, deviceAddr:String=null, deviceName:String=null, strmsg:String=null) {
   def createTimeMs() :Long = { return createTimeMs }
+  def deviceAddr() :String = { return deviceAddr }
+  def deviceName() :String = { return deviceName }
   def strmsg() :String = { return strmsg }
 }
 
@@ -377,6 +379,14 @@ class RFCommMultiplexerService extends android.app.Service {
         bundle.putString(RFCommMultiplexerService.DEVICE_NAME, btNameString)
         msg.setData(bundle)
         activityMsgHandler.sendMessage(msg)
+
+        val queueMsg = new QueueMessage(System.currentTimeMillis(), btAddrString, btNameString, "[disconnect]")
+        queueMessageLinkedList synchronized {
+          queueMessageLinkedList.add(queueMsg)
+          while(queueMessageLinkedList.size()>10)       // todo: this is of course a bit arbitrary (and small)
+            queueMessageLinkedList.removeFirst()
+        }
+        if(D) Log.i(TAG, "ConnectedThread run: strmsg added queueMessageLinkedList.size()="+queueMessageLinkedList.size())
       }
     }
 
@@ -622,21 +632,22 @@ class RFCommMultiplexerService extends android.app.Service {
           } else if(cmd.equals("strmsg")) {
             // todo: classcast exception if somethngs fishy with arg1 ?
             if(D) Log.i(TAG, "ConnectedThread run: strmsg arg1="+arg1+" toName="+toName)
-            val strmsg = fromName+": "+arg1
+            //val strmsg = fromName+": "+arg1
             //activityMsgHandler.obtainMessage(RFCommMultiplexerService.MESSAGE_READ, -1, -1, strmsg).sendToTarget()
             // issue fixed: when the device sleeps (or when the activity is unloaded, say, while in the background), MESSAGE_READ WILL NOT ARRIVE
             // so we queue strmsg's and use obtainMessage().sendToTarget() only to notify the activity
-            val msg = new QueueMessage(System.currentTimeMillis(),strmsg)
+
+            val msg = new QueueMessage(System.currentTimeMillis(), fromAddr, fromName, arg1)
             queueMessageLinkedList synchronized {
               queueMessageLinkedList.add(msg)
-              while(queueMessageLinkedList.size()>10)
+              while(queueMessageLinkedList.size()>10)       // todo: this is of course a bit arbitrary (and small)
                 queueMessageLinkedList.removeFirst()
             }
             if(D) Log.i(TAG, "ConnectedThread run: strmsg added queueMessageLinkedList.size()="+queueMessageLinkedList.size())
 
             // the activity will fetch queued msgs immediately, or whenever it is started or wakes up from sleep
             activityMsgHandler.obtainMessage(RFCommMultiplexerService.MESSAGE_READ, -1, -1, null).sendToTarget()
-
+// todo do the same at DEVICE_DISCONNECT
           } else {
             if(D) Log.i(TAG, "ConnectedThread run - received unknown cmd="+cmd)
             // todo: must forward "unknown type" message to activity
