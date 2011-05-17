@@ -130,9 +130,9 @@ class RFCommMultiplexerService extends android.app.Service {
   // connectedDevicesMap contains all directly connected devices mapped to their connectedThread objects
   val connectedDevicesMap = new HashMap[BluetoothDevice,ConnectedThread]
 
-  // sendMsgCounterMap keeps track of the msg-counters for each known device
+  // sendMsgCounterMap keeps track of the msg-counters for all known devices
   // this makes it possible to ignore messages that are received multiple times
-  val sendMsgCounterMap = new HashMap[String,Int] // BluetoothDeviceAddr,Counter
+  val sendMsgCounterMap = new HashMap[String,Int] // BluetoothDeviceAddrString,counter
 
   class LocalBinder extends android.os.Binder {
     def getService = RFCommMultiplexerService.this
@@ -340,26 +340,28 @@ class RFCommMultiplexerService extends android.app.Service {
     mConnectedThread = new ConnectedThread(socket, socketType)
     mConnectedThread.start()
 
-    // add remoteDevice to list of connected devices
-    connectedDevicesMap += remoteDevice -> mConnectedThread
-
-    // reset sendMsgCounter
-    sendMsgCounterMap.put(remoteDevice.getAddress(), 0)
-
-    val queueMsg = new QueueMessage(System.currentTimeMillis(), remoteDevice.getAddress(), remoteDevice.getName(), "[connected]")
-    queueMessageLinkedList synchronized {
-      queueMessageLinkedList.add(queueMsg)
-      checkQueueMaxSize()
-    }
-
     if(remoteDevice!=null)
     {
+      val btAddrString = remoteDevice.getAddress()
+      val btNameString = remoteDevice.getName()
+
+      // add remoteDevice to list of connected devices
+      connectedDevicesMap += remoteDevice -> mConnectedThread
+
+      // reset sendMsgCounter
+      sendMsgCounterMap.put(btAddrString, 0)
+
+      queueMessageLinkedList synchronized {
+        queueMessageLinkedList.add(new QueueMessage(System.currentTimeMillis(), btAddrString, btNameString, "[connected]"))
+        checkQueueMaxSize()
+      }
+
       // Send the name of the connected device back to the UI Activity
       //if(D) Log.i(TAG, "connected, Send the name of the connected device back to the UI")
       val msg = activityMsgHandler.obtainMessage(RFCommMultiplexerService.MESSAGE_DEVICE_NAME)
       val bundle = new Bundle()
-      bundle.putString(RFCommMultiplexerService.DEVICE_NAME, remoteDevice.getName())
-      bundle.putString(RFCommMultiplexerService.DEVICE_ADDR, remoteDevice.getAddress())
+      bundle.putString(RFCommMultiplexerService.DEVICE_NAME, btNameString)
+      bundle.putString(RFCommMultiplexerService.DEVICE_ADDR, btAddrString)
       bundle.putString(RFCommMultiplexerService.SOCKET_TYPE, socketType)
       msg.setData(bundle)
       activityMsgHandler.sendMessage(msg)
@@ -383,6 +385,13 @@ class RFCommMultiplexerService extends android.app.Service {
         val btNameString = remoteDevice.getName()
         connectedDevicesMap -= remoteDevice
 
+        queueMessageLinkedList synchronized {
+          queueMessageLinkedList.add(new QueueMessage(System.currentTimeMillis(), btAddrString, btNameString, "[disconnected]"))
+          checkQueueMaxSize()
+        }
+
+        sendMsgCounterMap.remove(btAddrString)
+
         // tell the activity that the connection was lost
         val msg = activityMsgHandler.obtainMessage(RFCommMultiplexerService.DEVICE_DISCONNECT)
         val bundle = new Bundle()
@@ -391,11 +400,6 @@ class RFCommMultiplexerService extends android.app.Service {
         msg.setData(bundle)
         activityMsgHandler.sendMessage(msg)
 
-        val queueMsg = new QueueMessage(System.currentTimeMillis(), btAddrString, btNameString, "[disconnected]")
-        queueMessageLinkedList synchronized {
-          queueMessageLinkedList.add(queueMsg)
-          checkQueueMaxSize()
-        }
         if(D) Log.i(TAG, "ConnectedThread run: strmsg added queueMessageLinkedList.size()="+queueMessageLinkedList.size())
       }
     }
