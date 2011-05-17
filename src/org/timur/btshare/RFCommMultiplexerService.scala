@@ -169,7 +169,7 @@ class RFCommMultiplexerService extends android.app.Service {
   def start() = synchronized {
     if(D) Log.i(TAG, "start: android.os.Build.VERSION.SDK_INT="+android.os.Build.VERSION.SDK_INT)
 
-    setState(RFCommMultiplexerService.STATE_LISTEN)
+    setState(RFCommMultiplexerService.STATE_LISTEN)   // will send MESSAGE_STATE_CHANGE
 
     // Start the thread to listen on a BluetoothServerSocket
     if(mSecureAcceptThread == null) {
@@ -228,7 +228,7 @@ class RFCommMultiplexerService extends android.app.Service {
   def stop() = synchronized {
     if(D) Log.i(TAG, "stop")
 
-    setState(RFCommMultiplexerService.STATE_NONE)
+    setState(RFCommMultiplexerService.STATE_NONE)   // will send MESSAGE_STATE_CHANGE
 
     if(mConnectThread != null) {
       mConnectThread.cancel()
@@ -320,28 +320,27 @@ class RFCommMultiplexerService extends android.app.Service {
   private def setState(state: Int) = synchronized {
     if(D) Log.i(TAG, "setState() " + mState + " -> " + state)
     mState = state
-
     // Give the new state to the Handler so the UI Activity can update
     activityMsgHandler.obtainMessage(RFCommMultiplexerService.MESSAGE_STATE_CHANGE, state, -1).sendToTarget()
   }
   
   private def checkQueueMaxSize() {
-    while(queueMessageLinkedList.size()>30)       // todo: this is of course a bit arbitrary
+    while(queueMessageLinkedList.size()>30)       // todo: this is a bit arbitrary
       queueMessageLinkedList.removeFirst()
   }
 
   // called by: AcceptThread() -> socket = mmServerSocket.accept()
   // called by: activity options menu / NFC -> connect() -> ConnectThread()
   private def connected(socket: BluetoothSocket, remoteDevice: BluetoothDevice, socketType: String) = synchronized {
-    if(D) Log.i(TAG, "connected, Socket Type:" + socketType)
-
-    // Start the thread to manage the connection and perform transmissions
-    if(D) Log.i(TAG, "connected, Start ConnectedThread to manage the connection")
-    mConnectedThread = new ConnectedThread(socket, socketType)
-    mConnectedThread.start()
+    if(D) Log.i(TAG, "connected, sockettype="+socketType+" remoteDevice="+remoteDevice)
 
     if(remoteDevice!=null)
     {
+      // Start the thread to manage the connection and perform transmissions
+      if(D) Log.i(TAG, "connected, Start ConnectedThread to manage the connection")
+      mConnectedThread = new ConnectedThread(socket, socketType)
+      mConnectedThread.start()
+
       val btAddrString = remoteDevice.getAddress()
       val btNameString = remoteDevice.getName()
 
@@ -357,7 +356,6 @@ class RFCommMultiplexerService extends android.app.Service {
       }
 
       // Send the name of the connected device back to the UI Activity
-      //if(D) Log.i(TAG, "connected, Send the name of the connected device back to the UI")
       val msg = activityMsgHandler.obtainMessage(RFCommMultiplexerService.MESSAGE_DEVICE_NAME)
       val bundle = new Bundle()
       bundle.putString(RFCommMultiplexerService.DEVICE_NAME, btNameString)
@@ -365,9 +363,9 @@ class RFCommMultiplexerService extends android.app.Service {
       bundle.putString(RFCommMultiplexerService.SOCKET_TYPE, socketType)
       msg.setData(bundle)
       activityMsgHandler.sendMessage(msg)
-    }
 
-    setState(RFCommMultiplexerService.STATE_CONNECTED)    // to at least one other device
+      setState(RFCommMultiplexerService.STATE_CONNECTED)    // will send MESSAGE_STATE_CHANGE
+    }
     //if(D) Log.i(TAG, "connected, done")
   }
 
@@ -408,7 +406,7 @@ class RFCommMultiplexerService extends android.app.Service {
       //sendToast(btNameString+" connection was lost")
     } else { 
       //sendToast(btNameString+" connection was lost - now fully disconnected")
-      setState(RFCommMultiplexerService.STATE_LISTEN)
+      setState(RFCommMultiplexerService.STATE_LISTEN)   // will send MESSAGE_STATE_CHANGE
     }
   }
 
