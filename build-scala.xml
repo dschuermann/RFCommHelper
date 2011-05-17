@@ -44,7 +44,7 @@
         <echo
             message="Scala version ${scala.version.number} - http://scala-lang.org"
             level="info" taskname="scalac" />
-        <fsc
+        <scalac
             srcdir="${source.dir}" includes="**/*.scala"
             destdir="${out.classes.dir}"
             bootclasspathref="android.target.classpath"
@@ -58,7 +58,7 @@
                 <pathelement location="${out.classes.dir}" />
                 <fileset dir="${extensible.libs.classpath}" includes="*.jar" />
             </classpath>
-        </fsc>
+        </scalac>
         <touch file="${out.dir}/classes.complete" verbose="no"/>
     </target>
 

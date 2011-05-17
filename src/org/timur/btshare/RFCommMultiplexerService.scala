@@ -324,6 +324,11 @@ class RFCommMultiplexerService extends android.app.Service {
     // Give the new state to the Handler so the UI Activity can update
     activityMsgHandler.obtainMessage(RFCommMultiplexerService.MESSAGE_STATE_CHANGE, state, -1).sendToTarget()
   }
+  
+  private def checkQueueMaxSize() {
+    while(queueMessageLinkedList.size()>30)       // todo: this is of course a bit arbitrary
+      queueMessageLinkedList.removeFirst()
+  }
 
   // called by: AcceptThread() -> socket = mmServerSocket.accept()
   // called by: activity options menu / NFC -> connect() -> ConnectThread()
@@ -340,6 +345,12 @@ class RFCommMultiplexerService extends android.app.Service {
 
     // reset sendMsgCounter
     sendMsgCounterMap.put(remoteDevice.getAddress(), 0)
+
+    val queueMsg = new QueueMessage(System.currentTimeMillis(), remoteDevice.getAddress(), remoteDevice.getName(), "[connected]")
+    queueMessageLinkedList synchronized {
+      queueMessageLinkedList.add(queueMsg)
+      checkQueueMaxSize()
+    }
 
     if(remoteDevice!=null)
     {
@@ -380,11 +391,10 @@ class RFCommMultiplexerService extends android.app.Service {
         msg.setData(bundle)
         activityMsgHandler.sendMessage(msg)
 
-        val queueMsg = new QueueMessage(System.currentTimeMillis(), btAddrString, btNameString, "[disconnect]")
+        val queueMsg = new QueueMessage(System.currentTimeMillis(), btAddrString, btNameString, "[disconnected]")
         queueMessageLinkedList synchronized {
           queueMessageLinkedList.add(queueMsg)
-          while(queueMessageLinkedList.size()>10)       // todo: this is of course a bit arbitrary (and small)
-            queueMessageLinkedList.removeFirst()
+          checkQueueMaxSize()
         }
         if(D) Log.i(TAG, "ConnectedThread run: strmsg added queueMessageLinkedList.size()="+queueMessageLinkedList.size())
       }
@@ -640,8 +650,7 @@ class RFCommMultiplexerService extends android.app.Service {
             val msg = new QueueMessage(System.currentTimeMillis(), fromAddr, fromName, arg1)
             queueMessageLinkedList synchronized {
               queueMessageLinkedList.add(msg)
-              while(queueMessageLinkedList.size()>10)       // todo: this is of course a bit arbitrary (and small)
-                queueMessageLinkedList.removeFirst()
+              checkQueueMaxSize()
             }
             if(D) Log.i(TAG, "ConnectedThread run: strmsg added queueMessageLinkedList.size()="+queueMessageLinkedList.size())
 
