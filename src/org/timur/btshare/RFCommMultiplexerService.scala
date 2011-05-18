@@ -690,13 +690,11 @@ class RFCommMultiplexerService extends android.app.Service {
         while(running) {
           //if(D) Log.i(TAG, "ConnectedThread run " + socketType+" read size...")
           val size = codedInputStream.readInt32() // may block a long while
-          if(running) {
-            //if(D) Log.i(TAG, "ConnectedThread run " + socketType+" read size="+size+" socket="+socket)
-            if(size>0) {
-              val rawdata = codedInputStream.readRawBytes(size) // may block, but only very short
-              if(running)
-                processReceivedRawData(rawdata)
-            }
+          if(D) Log.i(TAG, "ConnectedThread run " + socketType+" read size="+size+" socket="+socket+" running="+running)
+          if(running && size>0) {
+            val rawdata = codedInputStream.readRawBytes(size) // since we know the size of data to expect, this should not block
+            if(running)
+              processReceivedRawData(rawdata)
           }
         }
       } catch {
@@ -711,6 +709,7 @@ class RFCommMultiplexerService extends android.app.Service {
       if(btMessage!=null) {
         try {
           val size = btMessage.getSerializedSize()
+          if(D) Log.i(TAG, "writeBtShareMessage size="+size)
           if(size>0) {
             if(codedOutputStream!=null)
               codedOutputStream synchronized {
@@ -721,7 +720,7 @@ class RFCommMultiplexerService extends android.app.Service {
                 if(codedOutputStream!=null)
                   codedOutputStream.flush()
               }
-            //if(D) Log.i(TAG, "writeBtShareMessage flushed size="+size)
+            if(D) Log.i(TAG, "writeBtShareMessage flushed size="+size)
           }
         } catch {
           case e: IOException =>
@@ -765,7 +764,8 @@ class RFCommMultiplexerService extends android.app.Service {
       try {
         codedOutputStream synchronized {
           codedOutputStream.writeInt32NoTag(size)
-          codedOutputStream.writeRawBytes(data)
+          if(size>0)
+            codedOutputStream.writeRawBytes(data)
           codedOutputStream.flush()
         }
       } catch {
