@@ -765,10 +765,9 @@ class RFCommMultiplexerService extends android.app.Service {
       try {
         codedOutputStream synchronized {
           codedOutputStream.writeInt32NoTag(size)
-          if(size>0) {
+          if(size>0)
             codedOutputStream.writeRawBytes(data,0,size)
-            codedOutputStream.flush()
-          }
+          codedOutputStream.flush()
         }
       } catch {
         case e: IOException =>
