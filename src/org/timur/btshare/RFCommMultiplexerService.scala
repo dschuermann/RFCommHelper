@@ -294,15 +294,16 @@ class RFCommMultiplexerService extends android.app.Service {
   }
 
   def sendData(size:Int, data: Array[Byte], toAddr:String) {
-    //if(D) Log.i(TAG, "sendData size="+size+" toAddr="+toAddr)
+    if(D) Log.i(TAG, "sendData size="+size+" toAddr="+toAddr)
     connectedDevicesMap.foreach { case (remoteDevice, connectedThread) => 
       if(connectedThread!=null)
-        try {
-          connectedThread.writeData(size, data)
-        } catch {
-          case e: IOException =>
-            Log.e(TAG, "sendData exception during write", e)
-            //sendToast("write exception "+e.getMessage())
+        if(toAddr==null || remoteDevice.getAddress().equals(toAddr)) {
+          try {
+            connectedThread.writeData(size, data)
+          } catch {
+            case e: IOException =>
+              Log.e(TAG, "sendData exception during write", e)
+          }
         }
     }
   }
@@ -760,13 +761,15 @@ class RFCommMultiplexerService extends android.app.Service {
       }
     }
 
-    def writeData(size:Int, data: Array[Byte]) {
+    def writeData(size:Int, data:Array[Byte]) {
+      if(D) Log.i(TAG, "writeData size="+size)
       try {
         codedOutputStream synchronized {
           codedOutputStream.writeInt32NoTag(size)
-          if(size>0)
-            codedOutputStream.writeRawBytes(data)
-          codedOutputStream.flush()
+          if(size>0) {
+            codedOutputStream.writeRawBytes(data,0,size)
+            codedOutputStream.flush()
+          }
         }
       } catch {
         case e: IOException =>
