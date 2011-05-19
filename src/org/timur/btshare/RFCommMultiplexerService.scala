@@ -94,7 +94,7 @@ class RFCommMultiplexerService extends android.app.Service {
   protected var context:Context = null
   protected var activityMsgHandler:Handler = null
 
-  private val queueMessageLinkedList = new LinkedList[QueueMessage]()
+  protected val queueMessageLinkedList = new LinkedList[QueueMessage]()
 
   def getAllMsgsNewerThan(lastMsgTimeMillis:Long) :ArrayList[QueueMessage] = {
     val retList = new ArrayList[QueueMessage]()
@@ -650,9 +650,8 @@ class RFCommMultiplexerService extends android.app.Service {
             // issue fixed: when the device sleeps (or when the activity is unloaded, say, while in the background), MESSAGE_READ WILL NOT ARRIVE
             // so we queue strmsg's and use obtainMessage().sendToTarget() only to notify the activity
 
-            val msg = new QueueMessage(System.currentTimeMillis(), fromAddr, fromName, arg1)
             queueMessageLinkedList synchronized {
-              queueMessageLinkedList.add(msg)
+              queueMessageLinkedList.add(new QueueMessage(System.currentTimeMillis(), fromAddr, fromName, arg1))
               checkQueueMaxSize()
             }
             if(D) Log.i(TAG, "ConnectedThread run: strmsg added queueMessageLinkedList.size()="+queueMessageLinkedList.size())
