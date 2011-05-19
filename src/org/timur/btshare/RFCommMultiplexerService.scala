@@ -325,7 +325,7 @@ class RFCommMultiplexerService extends android.app.Service {
     activityMsgHandler.obtainMessage(RFCommMultiplexerService.MESSAGE_STATE_CHANGE, state, -1).sendToTarget()
   }
   
-  private def checkQueueMaxSize() {
+  def checkQueueMaxSize() {
     while(queueMessageLinkedList.size()>30)       // todo: this is a bit arbitrary
       queueMessageLinkedList.removeFirst()
   }
