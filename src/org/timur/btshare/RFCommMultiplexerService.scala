@@ -294,7 +294,7 @@ class RFCommMultiplexerService extends android.app.Service {
   }
 
   def sendData(size:Int, data: Array[Byte], toAddr:String) {
-    if(D) Log.i(TAG, "sendData size="+size+" toAddr="+toAddr)
+    //if(D) Log.i(TAG, "sendData size="+size+" toAddr="+toAddr)
     connectedDevicesMap.foreach { case (remoteDevice, connectedThread) => 
       if(connectedThread!=null)
         if(toAddr==null || remoteDevice.getAddress().equals(toAddr)) {
