@@ -15,7 +15,17 @@
  * limitations under the License.
  */
 
-// RFCommMultiplexerService is an Android app service written in Scala 2.8.x
+/*
+ * RFCommMultiplexerService is a generic Android service that can be used by 
+ * developers to create ad-hoc wireless networks based on Bluetooth technology. 
+ * RFCommMultiplexer tries to simplify the creation of multi-device apps. 
+ * Spontaneous networks can be created, by simply connecting devices to each other. 
+ * Each device only needs to connect to one other device and immediately becomes 
+ * part of a larger network. Applications that have hooked up this way can engage 
+ * in coordinated interaction such as multi-player gaming. 
+ * Access points are not needed. 
+ * RFCommMultiplexer is written in Scala 2.8.x.
+ */
 
 package org.timur.btshare
 
@@ -415,19 +425,21 @@ class RFCommMultiplexerService extends android.app.Service {
     // The local server socket
     private var mSocketType: String = if(secure) "Secure" else "Insecure"
     private var mmServerSocket: BluetoothServerSocket = null
+
     openListenSocket()
 
     def openListenSocket() {
       mmServerSocket = null
       // Create a new listening server socket
       try {
-        if (secure) {
+        if(secure) {
           mmServerSocket = mAdapter.listenUsingRfcommWithServiceRecord(NAME_SECURE, MY_UUID_SECURE)
         } else {
           try {
             mmServerSocket = mAdapter.listenUsingInsecureRfcommWithServiceRecord(NAME_INSECURE, MY_UUID_INSECURE)
           } catch {
             case nsmerr: java.lang.NoSuchMethodError =>
+              // this should reall not happen, because we run the insecure method only if os >= 2.3.3
               Log.e(TAG, "listenUsingInsecureRfcommWithServiceRecord failed ", nsmerr)
           }
         }
@@ -464,6 +476,9 @@ class RFCommMultiplexerService extends android.app.Service {
 
         // If a connection was accepted
         if(socket != null) {
+          // todo: verify this remote device against "known devices"
+          // todo: if not a "known device" the popup a message towards out user and as for connect permission
+          
           RFCommMultiplexerService.this synchronized {
             // Start the connected thread
             connected(socket, socket.getRemoteDevice(), mSocketType)
@@ -661,7 +676,7 @@ class RFCommMultiplexerService extends android.app.Service {
 
           } else {
             if(D) Log.i(TAG, "ConnectedThread run - received unknown cmd="+cmd)
-            // todo: must forward "unknown type" message to activity
+            // todo: must make it possible for the activity to make user aware of this "unknown type" message
           }
         }
       }
