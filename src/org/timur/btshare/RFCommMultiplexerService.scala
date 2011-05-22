@@ -104,7 +104,7 @@ class RFCommMultiplexerService extends android.app.Service {
   protected var context:Context = null
   protected var activityMsgHandler:Handler = null
 
-  private val queueMessageLinkedList = new LinkedList[QueueMessage]()
+  protected val queueMessageLinkedList = new LinkedList[QueueMessage]()
 
   def getAllMsgsNewerThan(lastMsgTimeMillis:Long) :ArrayList[QueueMessage] = {
     val retList = new ArrayList[QueueMessage]()
@@ -307,12 +307,13 @@ class RFCommMultiplexerService extends android.app.Service {
     //if(D) Log.i(TAG, "sendData size="+size+" toAddr="+toAddr)
     connectedDevicesMap.foreach { case (remoteDevice, connectedThread) => 
       if(connectedThread!=null)
-        try {
-          connectedThread.writeData(size, data)
-        } catch {
-          case e: IOException =>
-            Log.e(TAG, "sendData exception during write", e)
-            //sendToast("write exception "+e.getMessage())
+        if(toAddr==null || remoteDevice.getAddress().equals(toAddr)) {
+          try {
+            connectedThread.writeData(size, data)
+          } catch {
+            case e: IOException =>
+              Log.e(TAG, "sendData exception during write", e)
+          }
         }
     }
   }
@@ -334,7 +335,7 @@ class RFCommMultiplexerService extends android.app.Service {
     activityMsgHandler.obtainMessage(RFCommMultiplexerService.MESSAGE_STATE_CHANGE, state, -1).sendToTarget()
   }
   
-  private def checkQueueMaxSize() {
+  def checkQueueMaxSize() {
     while(queueMessageLinkedList.size()>30)       // todo: this is a bit arbitrary
       queueMessageLinkedList.removeFirst()
   }
@@ -664,9 +665,8 @@ class RFCommMultiplexerService extends android.app.Service {
             // issue fixed: when the device sleeps (or when the activity is unloaded, say, while in the background), MESSAGE_READ WILL NOT ARRIVE
             // so we queue strmsg's and use obtainMessage().sendToTarget() only to notify the activity
 
-            val msg = new QueueMessage(System.currentTimeMillis(), fromAddr, fromName, arg1)
             queueMessageLinkedList synchronized {
-              queueMessageLinkedList.add(msg)
+              queueMessageLinkedList.add(new QueueMessage(System.currentTimeMillis(), fromAddr, fromName, arg1))
               checkQueueMaxSize()
             }
             if(D) Log.i(TAG, "ConnectedThread run: strmsg added queueMessageLinkedList.size()="+queueMessageLinkedList.size())
@@ -775,12 +775,13 @@ class RFCommMultiplexerService extends android.app.Service {
       }
     }
 
-    def writeData(size:Int, data: Array[Byte]) {
+    def writeData(size:Int, data:Array[Byte]) {
+      if(D) Log.i(TAG, "writeData size="+size)
       try {
         codedOutputStream synchronized {
           codedOutputStream.writeInt32NoTag(size)
           if(size>0)
-            codedOutputStream.writeRawBytes(data)
+            codedOutputStream.writeRawBytes(data,0,size)
           codedOutputStream.flush()
         }
       } catch {
