@@ -106,6 +106,7 @@ class RFCommMultiplexerService extends android.app.Service {
 
   protected val queueMessageLinkedList = new LinkedList[QueueMessage]()
 
+
   def getAllMsgsNewerThan(lastMsgTimeMillis:Long) :ArrayList[QueueMessage] = {
     val retList = new ArrayList[QueueMessage]()
     queueMessageLinkedList synchronized {
@@ -475,18 +476,12 @@ class RFCommMultiplexerService extends android.app.Service {
               Log.e(TAG, "Socket Type: " + mSocketType + " accept() failed", e)
         }
 
-        // If a connection was accepted
         if(socket != null) {
-          // todo: verify this remote device against "known devices"
-          // todo: if not a "known device" the popup a message towards out user and as for connect permission
-          
+          // If a connection was accepted
           RFCommMultiplexerService.this synchronized {
-            // Start the connected thread
+            // this will start the connected thread, add remoteDevice to connectedDevicesMap
+            // and send MESSAGE_DEVICE_NAME to the activity so that mConnectedDeviceAddr can be added to prefKnownDevicesEditor 
             connected(socket, socket.getRemoteDevice(), mSocketType)
-
-            // open listen socket for next connection
-            //if(mmServerSocket!=null) // might be nulled by cancel()
-            //  openListenSocket()
           }
         }
         
