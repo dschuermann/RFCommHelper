@@ -97,7 +97,7 @@ class RFCommMultiplexerService extends android.app.Service {
   private val MY_UUID_INSECURE = UUID.fromString("8ce255c0-200a-11e0-ac64-0800200c9a66")
 
   // Member fields for the local bluetooth adapter
-  private val mAdapter = BluetoothAdapter.getDefaultAdapter()
+  protected val mAdapter = BluetoothAdapter.getDefaultAdapter()
   protected val myBtName = mAdapter.getName()
   protected val myBtAddr = mAdapter.getAddress()
   
@@ -134,9 +134,9 @@ class RFCommMultiplexerService extends android.app.Service {
 
   @volatile private var mSecureAcceptThread: AcceptThread = null
   @volatile private var mInsecureAcceptThread: AcceptThread = null
-  @volatile private var mConnectThread: ConnectThread = null
-  @volatile private var mConnectedThread: ConnectedThread = null
-  @volatile private var mState = RFCommMultiplexerService.STATE_NONE
+  @volatile protected var mConnectThread: ConnectThread = null
+  @volatile protected var mConnectedThread: ConnectedThread = null
+  @volatile protected var mState = RFCommMultiplexerService.STATE_NONE
 
   // connectedDevicesMap contains all directly connected devices mapped to their connectedThread objects
   val connectedDevicesMap = new HashMap[BluetoothDevice,ConnectedThread]
@@ -329,7 +329,7 @@ class RFCommMultiplexerService extends android.app.Service {
 
   // private methods
 
-  private def setState(state: Int) = synchronized {
+  protected def setState(state: Int) = synchronized {
     if(D) Log.i(TAG, "setState() " + mState + " -> " + state)
     mState = state
     // Give the new state to the Handler so the UI Activity can update
@@ -343,7 +343,7 @@ class RFCommMultiplexerService extends android.app.Service {
 
   // called by: AcceptThread() -> socket = mmServerSocket.accept()
   // called by: activity options menu / NFC -> connect() -> ConnectThread()
-  private def connected(socket: BluetoothSocket, remoteDevice: BluetoothDevice, socketType: String) = synchronized {
+  protected def connected(socket: BluetoothSocket, remoteDevice: BluetoothDevice, socketType: String) = synchronized {
     if(D) Log.i(TAG, "connected, sockettype="+socketType+" remoteDevice="+remoteDevice)
 
     if(remoteDevice!=null)
@@ -422,7 +422,7 @@ class RFCommMultiplexerService extends android.app.Service {
     }
   }
 
-  private class AcceptThread(secure: Boolean) extends Thread {
+  protected class AcceptThread(secure: Boolean) extends Thread {
     if(D) Log.i(TAG, "AcceptThread")
     // The local server socket
     private var mSocketType: String = if(secure) "Secure" else "Insecure"
@@ -505,7 +505,7 @@ class RFCommMultiplexerService extends android.app.Service {
     }
   }
 
-  private class ConnectThread(remoteDevice: BluetoothDevice, secure: Boolean, complainFail:Boolean=true) extends Thread {
+  protected class ConnectThread(remoteDevice: BluetoothDevice, secure: Boolean, complainFail:Boolean=true) extends Thread {
     private val mSocketType = if(secure) "Secure" else "Insecure"
     private var mmSocket: BluetoothSocket = null
 
