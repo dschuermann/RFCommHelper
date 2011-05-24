@@ -341,11 +341,10 @@ class RFCommMultiplexerService extends android.app.Service {
 
   // called by: AcceptThread() -> socket = mmServerSocket.accept()
   // called by: activity options menu / NFC -> connect() -> ConnectThread()
-  protected def connected(socket: BluetoothSocket, remoteDevice: BluetoothDevice, socketType: String) = synchronized {
+  // called by: ConnectPopupActivity
+  def connected(socket: BluetoothSocket, remoteDevice: BluetoothDevice, socketType: String) = synchronized {
     if(D) Log.i(TAG, "connected, sockettype="+socketType+" remoteDevice="+remoteDevice)
-
-    if(remoteDevice!=null)
-    {
+    if(remoteDevice!=null) {
       // Start the thread to manage the connection and perform transmissions
       if(D) Log.i(TAG, "connected, Start ConnectedThread to manage the connection")
       mConnectedThread = new ConnectedThread(socket, socketType)
@@ -360,12 +359,8 @@ class RFCommMultiplexerService extends android.app.Service {
       // reset sendMsgCounter
       sendMsgCounterMap.put(btAddrString, 0)
 
-      queueMessageLinkedList synchronized {
-        queueMessageLinkedList.add(new QueueMessage(System.currentTimeMillis(), btAddrString, btNameString, "[connected]"))
-        checkQueueMaxSize()
-      }
-
       // Send the name of the connected device back to the UI Activity
+      // todo: issue: the main activity may not be active at this very moment (but the ConnectPopupActivity)
       val msg = activityMsgHandler.obtainMessage(RFCommMultiplexerService.MESSAGE_DEVICE_NAME)
       val bundle = new Bundle()
       bundle.putString(RFCommMultiplexerService.DEVICE_NAME, btNameString)
@@ -375,8 +370,24 @@ class RFCommMultiplexerService extends android.app.Service {
       activityMsgHandler.sendMessage(msg)
 
       setState(RFCommMultiplexerService.STATE_CONNECTED)    // will send MESSAGE_STATE_CHANGE
+
+      queueMessageLinkedList synchronized {
+        queueMessageLinkedList.add(new QueueMessage(System.currentTimeMillis(), btAddrString, btNameString, "[connected]"))
+        checkQueueMaxSize()
+      }
     }
     //if(D) Log.i(TAG, "connected, done")
+  }
+
+  def disconnect(socket: BluetoothSocket) = synchronized {
+    if(socket!=null) {
+      try {
+        socket.close()
+      } catch {
+        case ex: IOException =>
+          Log.e(TAG, "disconnect() socket="+socket+" ex=",ex)
+      }
+    }
   }
 
   // called by ConnectedThread() IOException on send()
@@ -490,14 +501,14 @@ class RFCommMultiplexerService extends android.app.Service {
     }
 
     def cancel() { // called by disconnect() or stop()
-      if(D) Log.i(TAG, "Socket Type " + mSocketType + " cancel ")
+      if(D) Log.i(TAG, "Socket Type " + mSocketType + " cancel()")
       if(mmServerSocket!=null) {
         try {
           mmServerSocket.close()
           mmServerSocket=null
         } catch {
-          case e: IOException =>
-            Log.e(TAG, "Socket Type " + mSocketType + " close() of server failed", e)
+          case ex: IOException =>
+            Log.e(TAG, "cancel() mmServerSocket="+mmServerSocket+" ex=",ex)
         }
       }
     }
