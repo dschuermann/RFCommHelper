@@ -120,7 +120,6 @@ class RFCommMultiplexerService extends android.app.Service {
     return retList
   }
 
-
   def setContext(context:Context) {
     this.context = context
   }
@@ -204,7 +203,7 @@ class RFCommMultiplexerService extends android.app.Service {
 
   // called by the activity: options menu "connect" -> onActivityResult() -> connectDevice()
   // called by the activity: as a result of NfcAdapter.ACTION_NDEF_DISCOVERED
-  def connect(newRemoteDevice:BluetoothDevice, secure:Boolean, complainFail:Boolean=true) :Unit = synchronized {
+  def connect(newRemoteDevice:BluetoothDevice, secure:Boolean, reportConnectState:Boolean=true) :Unit = synchronized {
     if(newRemoteDevice==null) {
       if(D) Log.i(TAG, "connect() newRemoteDevice==null, give up")
       return
@@ -218,8 +217,7 @@ class RFCommMultiplexerService extends android.app.Service {
       return
     }
 
-    if(complainFail) {
-      // todo: "complainFail" is actually used as "report_connect/disconnect-actions_via_activityMsgHandler"
+    if(reportConnectState) {
       val msg = activityMsgHandler.obtainMessage(RFCommMultiplexerService.CONNECTION_START)
       val bundle = new Bundle()
       bundle.putString(RFCommMultiplexerService.DEVICE_ADDR, newRemoteDevice.getAddress())
@@ -229,7 +227,7 @@ class RFCommMultiplexerService extends android.app.Service {
     }
     
     // Start the thread to connect with the given device
-    mConnectThread = new ConnectThread(newRemoteDevice, secure, complainFail)
+    mConnectThread = new ConnectThread(newRemoteDevice, secure, reportConnectState)
     mConnectThread.start()
   }
 
@@ -505,7 +503,7 @@ class RFCommMultiplexerService extends android.app.Service {
     }
   }
 
-  protected class ConnectThread(remoteDevice: BluetoothDevice, secure: Boolean, complainFail:Boolean=true) extends Thread {
+  protected class ConnectThread(remoteDevice: BluetoothDevice, secure: Boolean, reportConnectState:Boolean=true) extends Thread {
     private val mSocketType = if(secure) "Secure" else "Insecure"
     private var mmSocket: BluetoothSocket = null
 
@@ -542,7 +540,7 @@ class RFCommMultiplexerService extends android.app.Service {
             case e2: IOException =>
               Log.e(TAG, "unable to close() " + mSocketType + " socket during connection failure", e2)
           }
-          if(complainFail) {
+          if(reportConnectState) {
             // need to tell the activity that the connection has failed - and that the connect-animation/busy-image can be disabled/made invisible
             val msg = activityMsgHandler.obtainMessage(RFCommMultiplexerService.CONNECTION_FAILED)
             val bundle = new Bundle()
