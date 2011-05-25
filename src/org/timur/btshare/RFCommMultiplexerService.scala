@@ -125,7 +125,7 @@ class RFCommMultiplexerService extends android.app.Service {
   }
 
   def setActivityMsgHandler(activityMsgHandler:Handler) {
-    // a simple android.os.Handler, defined in the activity
+    // android.os.Handler defined in the activity
     this.activityMsgHandler = activityMsgHandler
   }
 
