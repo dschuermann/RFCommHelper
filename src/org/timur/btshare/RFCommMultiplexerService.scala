@@ -16,14 +16,14 @@
  */
 
 /*
- * RFCommMultiplexerService is a generic Android service that can be used by 
- * developers to create ad-hoc wireless networks based on Bluetooth technology. 
- * RFCommMultiplexer tries to simplify the creation of multi-device apps. 
- * Spontaneous networks can be created, by simply connecting devices to each other. 
- * Each device only needs to connect to one other device and immediately becomes 
- * part of a larger network. Applications that have hooked up this way can engage 
- * in coordinated interaction such as multi-player gaming. 
- * Access points are not needed. 
+ * RFCommMultiplexerService is a generic Android service used by developers 
+ * to create ad-hoc wireless networks based on Bluetooth technology, 
+ * RFCommMultiplexer simplifies the creation of multi-device apps. 
+ * Spontaneous networks are created by simply connecting devices to each other. 
+ * A device only needs to connect to one other device, and immediately it 
+ * becomes part of a larger network. Applications connected in this way can 
+ * engage in coordinated interaction such as multi-player gaming.
+ * No access points infrastructure is needed. 
  * RFCommMultiplexer is written in Scala 2.8.x.
  */
 
@@ -143,6 +143,11 @@ class RFCommMultiplexerService extends android.app.Service {
   // sendMsgCounterMap keeps track of the msg-counters for all known devices
   // this makes it possible to ignore messages that are received multiple times
   val sendMsgCounterMap = new HashMap[String,Int] // BluetoothDeviceAddrString,counter
+  // todo: severe issue: sendMsgCounterMap is not reseted for indirectly connected devices
+  //   when indirectly connected devices get restarted, all the data they send will be ignored 
+  //   (until their SendMsgCounter > last time)
+  //   solution may be for all devices to broadcast a "I-was-newly-started" message
+  //   also: a device that receives a disconnect-event should probably broadcast a "he-was-disconencted" message
 
   class LocalBinder extends android.os.Binder {
     def getService = RFCommMultiplexerService.this
@@ -628,6 +633,8 @@ class RFCommMultiplexerService extends android.app.Service {
       }
 
       sendMsgCounterMap.put(fromAddr, receivedSendMsgCounter)
+      
+      // todo: would be good to store a timestamp as "lastDataTime" from fromAddr
       
       if(toAddr!=null && toAddr.length>0 && !toAddr.equals(myBtAddr)) {
         // NOT for me: don't process
