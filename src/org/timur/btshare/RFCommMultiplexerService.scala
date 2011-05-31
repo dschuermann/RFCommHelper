@@ -363,9 +363,11 @@ class RFCommMultiplexerService extends android.app.Service {
 
       // reset sendMsgCounter
       sendMsgCounterMap.put(btAddrString, 0)
+      
+      // todo: broadcast local and remote address as "just connected"
 
       // Send the name of the connected device back to the UI Activity
-      // todo: issue: the main activity may not be active at this very moment (but the ConnectPopupActivity)
+      // note: the main activity may not be active at this moment (but for instance the ConnectPopupActivity)
       val msg = activityMsgHandler.obtainMessage(RFCommMultiplexerService.MESSAGE_DEVICE_NAME)
       val bundle = new Bundle()
       bundle.putString(RFCommMultiplexerService.DEVICE_NAME, btNameString)
@@ -384,6 +386,7 @@ class RFCommMultiplexerService extends android.app.Service {
     //if(D) Log.i(TAG, "connected, done")
   }
 
+  // todo: not sure who calls this
   def disconnect(socket: BluetoothSocket) = synchronized {
     if(socket!=null) {
       try {
@@ -401,7 +404,6 @@ class RFCommMultiplexerService extends android.app.Service {
 
     // Send a failure toast back to the Activity
     var remoteDevice:BluetoothDevice = null
-    //var btNameString:String = null
     if(socket!=null) {
       remoteDevice = socket.getRemoteDevice()
       if(remoteDevice!=null) {
@@ -409,12 +411,11 @@ class RFCommMultiplexerService extends android.app.Service {
         val btNameString = remoteDevice.getName()
         connectedDevicesMap -= remoteDevice
 
+        // put a disconnect-entry into msg-log 
         queueMessageLinkedList synchronized {
           queueMessageLinkedList.add(new QueueMessage(System.currentTimeMillis(), btAddrString, btNameString, "[disconnected]"))
           checkQueueMaxSize()
         }
-
-        sendMsgCounterMap.remove(btAddrString)
 
         // tell the activity that the connection was lost
         val msg = activityMsgHandler.obtainMessage(RFCommMultiplexerService.DEVICE_DISCONNECT)
@@ -423,6 +424,12 @@ class RFCommMultiplexerService extends android.app.Service {
         bundle.putString(RFCommMultiplexerService.DEVICE_NAME, btNameString)
         msg.setData(bundle)
         activityMsgHandler.sendMessage(msg)
+
+        // remove disconnected device from list of all devices
+        sendMsgCounterMap.remove(btAddrString)
+
+        // todo: broadcast a message indication that [btAddrString] may be lost
+        // BUT MAYBE THE LOST DEVICE IS STILL CONNECTED THROUGH ANOTHER DEVICE
 
         if(D) Log.i(TAG, "ConnectedThread run: strmsg added queueMessageLinkedList.size()="+queueMessageLinkedList.size())
       }
