@@ -85,6 +85,11 @@ class QueueMessage(createTimeMs:Long=0l, deviceAddr:String=null, deviceName:Stri
   def strmsg() :String = { return strmsg }
 }
 
+class IndirectDeviceObject(deviceName:String, lastTimeSeen:Long) {
+  def deviceName() :String = { return deviceName }
+  def lastTimeSeen() :Long = { return lastTimeSeen }
+}
+
 class RFCommMultiplexerService extends android.app.Service {
   private val TAG = "RFCommMultiplexerService"
   private val D = true
@@ -137,8 +142,11 @@ class RFCommMultiplexerService extends android.app.Service {
   @volatile protected var mConnectedThread: ConnectedThread = null
   @volatile protected var mState = RFCommMultiplexerService.STATE_NONE
 
-  // connectedDevicesMap contains all directly connected devices mapped to their connectedThread objects
-  val connectedDevicesMap = new HashMap[BluetoothDevice,ConnectedThread]
+  // directlyConnectedDevicesMap contains all directly connected devices mapped to their connectedThread objects
+  val directlyConnectedDevicesMap = new HashMap[BluetoothDevice,ConnectedThread]
+
+  // indirectlyConnectedDevicesMap contains all indirectly connected devices mapped to their connectedThread objects
+  val indirectlyConnectedDevicesMap = new HashMap[String,IndirectDeviceObject] // btAddr,IndirectDeviceObject
 
   // sendMsgCounterMap keeps track of the msg-counters for all known devices
   // this makes it possible to ignore messages that are received multiple times
@@ -165,12 +173,16 @@ class RFCommMultiplexerService extends android.app.Service {
     return mState
   }
 
-  def getConnectedDevicesMap() :HashMap[BluetoothDevice,ConnectedThread] = synchronized {
-    return connectedDevicesMap
+  def getDirectlyConnectedDevicesMap() :HashMap[BluetoothDevice,ConnectedThread] = synchronized {
+    return directlyConnectedDevicesMap
+  }
+
+  def getIndirectlyConnectedDevicesMap() :HashMap[String,IndirectDeviceObject] = synchronized {
+    return indirectlyConnectedDevicesMap
   }
 
   def isConnectedDevices(newRemoteDeviceAddr: String) :Boolean  = synchronized {
-    connectedDevicesMap.foreach { case (remoteDevice, connectedThread) => 
+    directlyConnectedDevicesMap.foreach { case (remoteDevice, connectedThread) => 
       if(connectedThread!=null)
         if(newRemoteDeviceAddr.equals(remoteDevice.getAddress()))
           return true
@@ -216,7 +228,7 @@ class RFCommMultiplexerService extends android.app.Service {
 
     if(D) Log.i(TAG, "connect to: "+newRemoteDevice.getAddress()+" name="+newRemoteDevice.getName())
 
-    // if newRemoteDevice is already listed in connectedDevicesMap, then we do nothing
+    // if newRemoteDevice is already listed in directlyConnectedDevicesMap, then we do nothing
     if(isConnectedDevices(newRemoteDevice.getAddress())) {
       if(D) Log.i(TAG, "connect() newRemoteDevice is already directly connected, give up")
       return
@@ -277,7 +289,7 @@ class RFCommMultiplexerService extends android.app.Service {
     }
     val myCmd = if(cmd==null) cmd else "strmsg"
     if(D) Log.i(TAG, "send myCmd="+myCmd+" message="+message+" toAddr="+toAddr+" sendMsgCounter="+thisSendMsgCounter)
-    connectedDevicesMap.foreach { case (remoteDevice, connectedThread) => 
+    directlyConnectedDevicesMap.foreach { case (remoteDevice, connectedThread) => 
       if(connectedThread!=null) {
         //if(D) Log.i(TAG, "send2 myCmd="+myCmd+" message="+message+" toAddr='"+toAddr+"' remoteDevice='"+remoteDevice.getAddress()+"'")
         connectedThread.writeCmdMsg(myCmd,message,toAddr,thisSendMsgCounter)
@@ -301,7 +313,7 @@ class RFCommMultiplexerService extends android.app.Service {
       sendMsgCounter+=1
       thisSendMsgCounter = sendMsgCounter
     }
-    connectedDevicesMap.foreach { case (remoteDevice, connectedThread) => 
+    directlyConnectedDevicesMap.foreach { case (remoteDevice, connectedThread) => 
       if(connectedThread!=null)
         connectedThread.writeCmdMsg("ping",""+nowMs,toAddr,thisSendMsgCounter)
     }
@@ -309,7 +321,7 @@ class RFCommMultiplexerService extends android.app.Service {
 
   def sendData(size:Int, data: Array[Byte], toAddr:String) {
     //if(D) Log.i(TAG, "sendData size="+size+" toAddr="+toAddr)
-    connectedDevicesMap.foreach { case (remoteDevice, connectedThread) => 
+    directlyConnectedDevicesMap.foreach { case (remoteDevice, connectedThread) => 
       if(connectedThread!=null)
         if(toAddr==null || remoteDevice.getAddress().equals(toAddr)) {
           try {
@@ -359,7 +371,7 @@ class RFCommMultiplexerService extends android.app.Service {
       val btNameString = remoteDevice.getName()
 
       // add remoteDevice to list of connected devices
-      connectedDevicesMap += remoteDevice -> mConnectedThread
+      directlyConnectedDevicesMap += remoteDevice -> mConnectedThread
 
       // reset sendMsgCounter
       sendMsgCounterMap.put(btAddrString, 0)
@@ -409,7 +421,7 @@ class RFCommMultiplexerService extends android.app.Service {
       if(remoteDevice!=null) {
         val btAddrString = remoteDevice.getAddress()
         val btNameString = remoteDevice.getName()
-        connectedDevicesMap -= remoteDevice
+        directlyConnectedDevicesMap -= remoteDevice
 
         // put a disconnect-entry into msg-log 
         queueMessageLinkedList synchronized {
@@ -435,7 +447,7 @@ class RFCommMultiplexerService extends android.app.Service {
       }
     }
 
-    if(connectedDevicesMap.size>0) {
+    if(directlyConnectedDevicesMap.size>0) {
       //sendToast(btNameString+" connection was lost")
     } else { 
       //sendToast(btNameString+" connection was lost - now fully disconnected")
@@ -500,7 +512,7 @@ class RFCommMultiplexerService extends android.app.Service {
         if(socket != null) {
           // If a connection was accepted
           RFCommMultiplexerService.this synchronized {
-            // this will start the connected thread, add remoteDevice to connectedDevicesMap
+            // this will start the connected thread, add remoteDevice to directlyConnectedDevicesMap
             // and send MESSAGE_DEVICE_NAME to the activity so that mConnectedDeviceAddr can be added to prefKnownDevicesEditor 
             connected(socket, socket.getRemoteDevice(), mSocketType)
           }
@@ -642,6 +654,13 @@ class RFCommMultiplexerService extends android.app.Service {
       sendMsgCounterMap.put(fromAddr, receivedSendMsgCounter)
       
       // todo: would be good to store a timestamp as "lastDataTime" from fromAddr
+
+      // if fromAddr not listed in directlyConnectedDevicesMap, add it to indirectlyConnectedDevicesMap
+      if(!isConnectedDevices(fromAddr)) {
+        indirectlyConnectedDevicesMap += fromAddr -> new IndirectDeviceObject(fromName, System.currentTimeMillis())
+        if(D) Log.i(TAG, "ConnectedThread run: added indirectlyConnectedDevice fromName="+fromName+" fromAddr="+fromAddr+" ##################")
+      }
+
       
       if(toAddr!=null && toAddr.length>0 && !toAddr.equals(myBtAddr)) {
         // NOT for me: don't process
@@ -705,7 +724,7 @@ class RFCommMultiplexerService extends android.app.Service {
       } else {
         // NOT only for me: forward obtained message to all devices in connectedDevicesSet except to fromAddr
         // so that ALL data is ALWAYS received IDENTICALLY by ALL clients 
-        connectedDevicesMap.foreach { case (remoteDevice, connectedThread) => 
+        directlyConnectedDevicesMap.foreach { case (remoteDevice, connectedThread) => 
           if(!remoteDevice.getAddress().equals(fromAddr) && 
              !remoteDevice.getAddress().equals(connectedBtAddr)) {    // todo: explain ???
             if(D) Log.i(TAG, "ConnectedThread forward "+cmd+" from="+fromAddr+" to="+remoteDevice.getAddress())
