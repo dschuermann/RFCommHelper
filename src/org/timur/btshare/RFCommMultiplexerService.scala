@@ -222,11 +222,11 @@ class RFCommMultiplexerService extends android.app.Service {
   // called by the activity: as a result of NfcAdapter.ACTION_NDEF_DISCOVERED
   def connect(newRemoteDevice:BluetoothDevice, secure:Boolean, reportConnectState:Boolean=true) :Unit = synchronized {
     if(newRemoteDevice==null) {
-      if(D) Log.i(TAG, "connect() newRemoteDevice==null, give up")
+      Log.e(TAG, "connect() newRemoteDevice==null, give up")
       return
     }
 
-    if(D) Log.i(TAG, "connect to: "+newRemoteDevice.getAddress()+" name="+newRemoteDevice.getName())
+    if(D) Log.i(TAG, "connect() remoteAddr="+newRemoteDevice.getAddress()+" name="+newRemoteDevice.getName()+" secure="+secure)
 
     // if newRemoteDevice is already listed in directlyConnectedDevicesMap, then we do nothing
     if(isConnectedDevices(newRemoteDevice.getAddress())) {
@@ -555,7 +555,7 @@ class RFCommMultiplexerService extends android.app.Service {
     }
 
     override def run() {
-      //if(D) Log.i(TAG, "BEGIN mConnectThread SocketType:" + mSocketType)
+      if(D) Log.i(TAG, "ConnectThread() run SocketType="+mSocketType)
       setName("ConnectThread" + mSocketType)
 
       // Always cancel discovery because it will slow down a connection
