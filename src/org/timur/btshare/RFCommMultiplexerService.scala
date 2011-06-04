@@ -70,6 +70,7 @@ object RFCommMultiplexerService {
   val DEVICE_DISCONNECT = 7
   val CONNECTION_FAILED = 8
   val CONNECTION_START = 9
+  val MESSAGE_REDRAW_DEVICEVIEW = 10
 
   // Key names received from the RFCommMultiplexerService Handler
   val DEVICE_NAME = "device_name"
@@ -175,10 +176,6 @@ class RFCommMultiplexerService extends android.app.Service {
 
   def getDirectlyConnectedDevicesMap() :HashMap[BluetoothDevice,ConnectedThread] = synchronized {
     return directlyConnectedDevicesMap
-  }
-
-  def getIndirectlyConnectedDevicesMap() :HashMap[String,IndirectDeviceObject] = synchronized {
-    return indirectlyConnectedDevicesMap
   }
 
   def isConnectedDevices(newRemoteDeviceAddr: String) :Boolean  = synchronized {
@@ -657,8 +654,11 @@ class RFCommMultiplexerService extends android.app.Service {
 
       // if fromAddr not listed in directlyConnectedDevicesMap, add it to indirectlyConnectedDevicesMap
       if(!isConnectedDevices(fromAddr)) {
-        indirectlyConnectedDevicesMap += fromAddr -> new IndirectDeviceObject(fromName, System.currentTimeMillis())
-        if(D) Log.i(TAG, "ConnectedThread run: added indirectlyConnectedDevice fromName="+fromName+" fromAddr="+fromAddr+" ##################")
+        indirectlyConnectedDevicesMap += fromAddr -> new IndirectDeviceObject(fromName, System.currentTimeMillis())  // todo: missing info: connected via btAddr
+        if(D) Log.i(TAG, "ConnectedThread run: added indirectlyConnectedDevice fromName="+fromName+" fromAddr="+fromAddr)
+
+        // trigger a redraw, for when activity is currently in deviceView
+        activityMsgHandler.obtainMessage(RFCommMultiplexerService.MESSAGE_REDRAW_DEVICEVIEW, -1, -1, null).sendToTarget()
       }
 
       
@@ -695,7 +695,7 @@ class RFCommMultiplexerService extends android.app.Service {
             activityMsgHandler.obtainMessage(RFCommMultiplexerService.RECEIVED_PONG, -1, -1, fromAddr+","+diffMs).sendToTarget()
 
           } else if(cmd.equals("strmsg")) {
-            // todo: classcast exception if somethngs fishy with arg1 ?
+            // todo: classcast exception if something is fishy with arg1 ?
             if(D) Log.i(TAG, "ConnectedThread run: strmsg arg1="+arg1+" toName="+toName)
             //val strmsg = fromName+": "+arg1
             //activityMsgHandler.obtainMessage(RFCommMultiplexerService.MESSAGE_READ, -1, -1, strmsg).sendToTarget()
