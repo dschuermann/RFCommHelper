@@ -654,11 +654,16 @@ class RFCommMultiplexerService extends android.app.Service {
 
       // if fromAddr not listed in directlyConnectedDevicesMap, add it to indirectlyConnectedDevicesMap
       if(!isConnectedDevices(fromAddr)) {
+        val previouslyFound = indirectlyConnectedDevicesMap get fromAddr
         indirectlyConnectedDevicesMap += fromAddr -> new IndirectDeviceObject(fromName, System.currentTimeMillis())  // todo: missing info: connected via btAddr
         if(D) Log.i(TAG, "ConnectedThread run: added indirectlyConnectedDevice fromName="+fromName+" fromAddr="+fromAddr)
 
-        // trigger a redraw, for when activity is currently in deviceView
-        activityMsgHandler.obtainMessage(RFCommMultiplexerService.MESSAGE_REDRAW_DEVICEVIEW, -1, -1, null).sendToTarget()
+        previouslyFound match {
+          case None => 
+            // trigger a redraw, for when activity is currently in deviceView
+            activityMsgHandler.obtainMessage(RFCommMultiplexerService.MESSAGE_REDRAW_DEVICEVIEW, -1, -1, null).sendToTarget()
+          case Some(previouslyFoundDevice) => 
+        }
       }
 
       
