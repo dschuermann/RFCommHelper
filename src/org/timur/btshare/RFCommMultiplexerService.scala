@@ -70,6 +70,7 @@ object RFCommMultiplexerService {
   val DEVICE_DISCONNECT = 7
   val CONNECTION_FAILED = 8
   val CONNECTION_START = 9
+  val MESSAGE_REDRAW_DEVICEVIEW = 10
 
   // Key names received from the RFCommMultiplexerService Handler
   val DEVICE_NAME = "device_name"
@@ -175,10 +176,6 @@ class RFCommMultiplexerService extends android.app.Service {
 
   def getDirectlyConnectedDevicesMap() :HashMap[BluetoothDevice,ConnectedThread] = synchronized {
     return directlyConnectedDevicesMap
-  }
-
-  def getIndirectlyConnectedDevicesMap() :HashMap[String,IndirectDeviceObject] = synchronized {
-    return indirectlyConnectedDevicesMap
   }
 
   def isConnectedDevices(newRemoteDeviceAddr: String) :Boolean  = synchronized {
@@ -428,16 +425,19 @@ class RFCommMultiplexerService extends android.app.Service {
 
   // called by ConnectedThread() IOException on send()
   private def connectionLost(socket: BluetoothSocket) {
-    if(D) Log.i(TAG, "connectionLost socket="+socket)
+    if(D) Log.i(TAG, "connectionLost() socket="+socket)
 
     // Send a failure toast back to the Activity
-    var remoteDevice:BluetoothDevice = null
     if(socket!=null) {
-      remoteDevice = socket.getRemoteDevice()
+      if(D) Log.i(TAG, "connectionLost socket!=null ...")
+      val remoteDevice = socket.getRemoteDevice()
+      if(D) Log.i(TAG, "connectionLost remoteDevice="+remoteDevice)
+
       if(remoteDevice!=null) {
         val btAddrString = remoteDevice.getAddress()
         val btNameString = remoteDevice.getName()
         directlyConnectedDevicesMap -= remoteDevice
+        if(D) Log.i(TAG, "connectionLost btAddrString="+btAddrString+" btNameString="+btNameString)
 
         // put a disconnect-entry into msg-log 
         queueMessageLinkedList synchronized {
@@ -453,13 +453,29 @@ class RFCommMultiplexerService extends android.app.Service {
         msg.setData(bundle)
         activityMsgHandler.sendMessage(msg)
 
-        // remove disconnected device from list of all devices
+        // remove disconnected device from sendMsgCounterMap
         sendMsgCounterMap.remove(btAddrString)
 
-        // todo: broadcast a message indication that [btAddrString] may be lost
-        // BUT MAYBE THE LOST DEVICE IS STILL CONNECTED THROUGH ANOTHER DEVICE
+        if(D) Log.i(TAG, "connectionLost directlyConnectedDevicesMap.size="+directlyConnectedDevicesMap.size+" #############################")
+        if(directlyConnectedDevicesMap.size>0) {
+          // bt-broadcast "disconnect", indication that [btAddrString] _MAYBE_ lost
+          //       BUT THE LOST DEVICE MAY STILL BE CONNECTED THROUGH ANOTHER DEVICE
+          //       if the disconnected device itself receives this bt-broadcast, it can broadcast a PONG msg to everyone, indicating it is alive
 
-        if(D) Log.i(TAG, "ConnectedThread run: strmsg added queueMessageLinkedList.size()="+queueMessageLinkedList.size())
+          var thisSendMsgCounter:Long = 0
+          synchronized { 
+            sendMsgCounter+=1
+            thisSendMsgCounter = sendMsgCounter
+          }
+          directlyConnectedDevicesMap.foreach { case (remoteDevice, connectedThread) => 
+            if(connectedThread!=null) {
+              if(D) Log.i(TAG, "connectionLost btAddrString="+btAddrString+" bt-forward to "+remoteDevice.getAddress()+" ############################")
+              connectedThread.writeCmdMsg("disconnect",btAddrString,null,thisSendMsgCounter)
+            }
+          }
+        }
+
+        //if(D) Log.i(TAG, "ConnectedThread run: strmsg added queueMessageLinkedList.size()="+queueMessageLinkedList.size())
       }
     }
 
@@ -674,8 +690,18 @@ class RFCommMultiplexerService extends android.app.Service {
 
       // if fromAddr not listed in directlyConnectedDevicesMap, add it to indirectlyConnectedDevicesMap
       if(!isConnectedDevices(fromAddr)) {
-        indirectlyConnectedDevicesMap += fromAddr -> new IndirectDeviceObject(fromName, System.currentTimeMillis())
-        if(D) Log.i(TAG, "ConnectedThread run: added indirectlyConnectedDevice fromName="+fromName+" fromAddr="+fromAddr+" ##################")
+        val previouslyFound = indirectlyConnectedDevicesMap get fromAddr
+        indirectlyConnectedDevicesMap += fromAddr -> new IndirectDeviceObject(fromName, System.currentTimeMillis())  // todo: missing info: connected via btAddr
+        if(D) Log.i(TAG, "ConnectedThread run: added indirectlyConnectedDevice fromName="+fromName+" fromAddr="+fromAddr)
+
+        previouslyFound match {
+          case None => 
+            // trigger a redraw, for when activity is currently in deviceView
+            activityMsgHandler.obtainMessage(RFCommMultiplexerService.MESSAGE_REDRAW_DEVICEVIEW, -1, -1, null).sendToTarget()
+          case Some(previouslyFoundDevice) => 
+        }
+
+        sendMsgCounterMap.put(fromAddr, 0)
       }
 
       
@@ -689,7 +715,6 @@ class RFCommMultiplexerService extends android.app.Service {
 
         val toName = btMessage.getToName()
         val arg1 = btMessage.getArg1()  // the text message
-        //if(D) Log.i(TAG, "ConnectedThread run: read arg1="+arg1+" toName="+toName)
 
         // plug-in app-specific behaviour
         if(!processBtMessage(cmd, arg1, fromAddr, btMessage, codedInputStream)) {
@@ -717,8 +742,37 @@ class RFCommMultiplexerService extends android.app.Service {
             val diffMs = nowMs - sendMs
             activityMsgHandler.obtainMessage(RFCommMultiplexerService.RECEIVED_PONG, -1, -1, fromAddr+","+diffMs).sendToTarget()
 
+          } else if(cmd.equals("disconnect")) {
+            // note: this can be wrong info, if the "disconencted" device is still connected via another device
+            val disconnectDeviceAddr = arg1  // btAddr of device that disconnected
+            if(D) Log.i(TAG, "ConnectedThread run: disconnect disconnectDeviceAddr="+disconnectDeviceAddr+" ############################")
+            if(disconnectDeviceAddr.equals(myBtAddr)) {
+              // another device has bt-broadcasted that this device has disconnected, but we are still alive
+              // bt-broadcast a "pong" so that everyone know we are still 
+              if(D) Log.i(TAG, "ConnectedThread run: disconnect disconnectDeviceAddr="+disconnectDeviceAddr+" THIS IS ME, tell otheres I'm still here ############################")
+              var thisSendMsgCounter:Long = 0
+              synchronized { 
+                sendMsgCounter+=1
+                thisSendMsgCounter = sendMsgCounter
+              }
+              writeCmdMsg("pong", null, null, thisSendMsgCounter)
+
+            } else {
+              // remove disconnectDeviceAddr from our indirectlyConnectedDevicesMap
+              if(D) Log.i(TAG, "ConnectedThread run: disconnect remove disconnectDeviceAddr="+disconnectDeviceAddr+" from our indirectlyConnectedDevicesMap ############################")
+              val found = indirectlyConnectedDevicesMap get disconnectDeviceAddr
+              found match {
+                case None => 
+                case Some(foundDevice) => 
+                  indirectlyConnectedDevicesMap -= disconnectDeviceAddr
+                  // tell the activity, in case it sits in deviceView
+                  activityMsgHandler.obtainMessage(RFCommMultiplexerService.MESSAGE_REDRAW_DEVICEVIEW, -1, -1, null).sendToTarget()
+              }
+              sendMsgCounterMap.put(disconnectDeviceAddr, 0)
+            } 
+
           } else if(cmd.equals("strmsg")) {
-            // todo: classcast exception if somethngs fishy with arg1 ?
+            // todo: classcast exception if something is fishy with arg1 ?
             if(D) Log.i(TAG, "ConnectedThread run: strmsg arg1="+arg1+" toName="+toName)
             //val strmsg = fromName+": "+arg1
             //activityMsgHandler.obtainMessage(RFCommMultiplexerService.MESSAGE_READ, -1, -1, strmsg).sendToTarget()
@@ -729,7 +783,7 @@ class RFCommMultiplexerService extends android.app.Service {
               queueMessageLinkedList.add(new QueueMessage(System.currentTimeMillis(), fromAddr, fromName, arg1))
               checkQueueMaxSize()
             }
-            if(D) Log.i(TAG, "ConnectedThread run: strmsg added queueMessageLinkedList.size()="+queueMessageLinkedList.size())
+            if(D) Log.i(TAG, "ConnectedThread run cmd=strmsg added queueMessageLinkedList.size()="+queueMessageLinkedList.size())
 
             // the activity will fetch queued msgs immediately, or whenever it is started or wakes up from sleep
             activityMsgHandler.obtainMessage(RFCommMultiplexerService.MESSAGE_READ, -1, -1, null).sendToTarget()
@@ -750,7 +804,7 @@ class RFCommMultiplexerService extends android.app.Service {
         directlyConnectedDevicesMap.foreach { case (remoteDevice, connectedThread) => 
           if(!remoteDevice.getAddress().equals(fromAddr) && 
              !remoteDevice.getAddress().equals(connectedBtAddr)) {    // todo: explain ???
-            if(D) Log.i(TAG, "ConnectedThread forward "+cmd+" from="+fromAddr+" to="+remoteDevice.getAddress())
+            if(D) Log.i(TAG, "ConnectedThread forward cmd="+cmd+" from="+fromAddr+" to="+remoteDevice.getAddress())
             connectedThread.writeBtShareMessage(btMessage)
           }
         }
@@ -774,7 +828,7 @@ class RFCommMultiplexerService extends android.app.Service {
         }
       } catch {
         case e: IOException =>
-          Log.e(TAG, "ConnectedThread run disconnected ("+connectedBtAddr+" "+connectedBtName+") "+e)
+          if(D) Log.i(TAG, "ConnectedThread run disconnected ("+connectedBtAddr+" "+connectedBtName+") "+e)
           connectionLost(socket)
       }
       if(D) Log.i(TAG, "ConnectedThread run " + socketType+ " DONE")
