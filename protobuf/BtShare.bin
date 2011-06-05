@@ -1,24 +1,16 @@
 
-§
+õ
 BtShare.protobtshare"º
 Message
 command (	
 fromName (	
 fromAddr (	
-argCount (
+argCount (
 arg1 (	
 arg2 (	
 arg3 (	
 arg4 (	
 argBytes (
 toName (	
-toAddr (	"¯
-Response
-responseTypeè (	
-responseStringé (	
-responseIntê (
-responseBoolë (
-responseFloatì (
-responseDoubleí (
-responseLongî (B
+toAddr (	B
 org.timur.btshareBBtShareH

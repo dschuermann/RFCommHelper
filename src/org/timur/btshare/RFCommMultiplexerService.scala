@@ -134,7 +134,7 @@ class RFCommMultiplexerService extends android.app.Service {
     this.activityMsgHandler = activityMsgHandler
   }
 
-  @volatile protected var sendMsgCounter = 0
+  @volatile protected var sendMsgCounter:Long = 0
 
   @volatile private var mSecureAcceptThread: AcceptThread = null
   @volatile private var mInsecureAcceptThread: AcceptThread = null
@@ -150,7 +150,7 @@ class RFCommMultiplexerService extends android.app.Service {
 
   // sendMsgCounterMap keeps track of the msg-counters for all known devices
   // this makes it possible to ignore messages that are received multiple times
-  val sendMsgCounterMap = new HashMap[String,Int] // BluetoothDeviceAddrString,counter
+  val sendMsgCounterMap = new HashMap[String,Long] // BluetoothDeviceAddrString,counter
   // todo: severe issue: sendMsgCounterMap is not reseted for indirectly connected devices
   //   when indirectly connected devices get restarted, all the data they send will be ignored 
   //   (until their SendMsgCounter > last time)
@@ -281,10 +281,17 @@ class RFCommMultiplexerService extends android.app.Service {
     send(null, message, toAddr)
   }
 
-  def send(cmd:String, message:String, toAddr:String) = synchronized {  // the idea with synchronized is that no other send() shall take over (will interrupt) an ongoing send()
-    var thisSendMsgCounter = 0
+  def send(cmd:String, message:String, toAddr:String) = synchronized {
+    // the idea with synchronized is that no other send() shall take over (will interrupt) an ongoing send()
+    var thisSendMsgCounter:Long = 0
     synchronized { 
-      sendMsgCounter+=1
+      //sendMsgCounter+=1
+      val nowMs = SystemClock.uptimeMillis()
+      if(sendMsgCounter>=nowMs) 
+        sendMsgCounter+=1
+      else
+        sendMsgCounter=nowMs
+
       thisSendMsgCounter = sendMsgCounter
     }
     val myCmd = if(cmd==null) cmd else "strmsg"
@@ -308,9 +315,14 @@ class RFCommMultiplexerService extends android.app.Service {
   def ping(toAddr:String) {
     if(D) Log.i(TAG, "ping toAddr="+toAddr)
     val nowMs = SystemClock.uptimeMillis()
-    var thisSendMsgCounter = 0
+    var thisSendMsgCounter:Long = 0
     synchronized { 
-      sendMsgCounter+=1
+      //sendMsgCounter+=1
+      val nowMs = SystemClock.uptimeMillis()
+      if(sendMsgCounter>=nowMs) 
+        sendMsgCounter+=1
+      else
+        sendMsgCounter=nowMs
       thisSendMsgCounter = sendMsgCounter
     }
     directlyConnectedDevicesMap.foreach { case (remoteDevice, connectedThread) => 
@@ -356,48 +368,6 @@ class RFCommMultiplexerService extends android.app.Service {
       queueMessageLinkedList.removeFirst()
   }
 
-  // called by: AcceptThread() -> socket = mmServerSocket.accept()
-  // called by: activity options menu / NFC -> connect() -> ConnectThread()
-  // called by: ConnectPopupActivity
-  def connected(socket: BluetoothSocket, remoteDevice: BluetoothDevice, socketType: String) = synchronized {
-    if(D) Log.i(TAG, "connected, sockettype="+socketType+" remoteDevice="+remoteDevice)
-    if(remoteDevice!=null) {
-      // Start the thread to manage the connection and perform transmissions
-      if(D) Log.i(TAG, "connected, Start ConnectedThread to manage the connection")
-      mConnectedThread = new ConnectedThread(socket, socketType)
-      mConnectedThread.start()
-
-      val btAddrString = remoteDevice.getAddress()
-      val btNameString = remoteDevice.getName()
-
-      // add remoteDevice to list of connected devices
-      directlyConnectedDevicesMap += remoteDevice -> mConnectedThread
-
-      // reset sendMsgCounter
-      sendMsgCounterMap.put(btAddrString, 0)
-      
-      // todo: broadcast local and remote address as "just connected"
-
-      // Send the name of the connected device back to the UI Activity
-      // note: the main activity may not be active at this moment (but for instance the ConnectPopupActivity)
-      val msg = activityMsgHandler.obtainMessage(RFCommMultiplexerService.MESSAGE_DEVICE_NAME)
-      val bundle = new Bundle()
-      bundle.putString(RFCommMultiplexerService.DEVICE_NAME, btNameString)
-      bundle.putString(RFCommMultiplexerService.DEVICE_ADDR, btAddrString)
-      bundle.putString(RFCommMultiplexerService.SOCKET_TYPE, socketType)
-      msg.setData(bundle)
-      activityMsgHandler.sendMessage(msg)
-
-      setState(RFCommMultiplexerService.STATE_CONNECTED)    // will send MESSAGE_STATE_CHANGE
-
-      queueMessageLinkedList synchronized {
-        queueMessageLinkedList.add(new QueueMessage(System.currentTimeMillis(), btAddrString, btNameString, "[connected]"))
-        checkQueueMaxSize()
-      }
-    }
-    //if(D) Log.i(TAG, "connected, done")
-  }
-
   // todo: not sure who calls this
   def disconnect(socket: BluetoothSocket) = synchronized {
     if(socket!=null) {
@@ -407,6 +377,52 @@ class RFCommMultiplexerService extends android.app.Service {
         case ex: IOException =>
           Log.e(TAG, "disconnect() socket="+socket+" ex=",ex)
       }
+    }
+  }
+
+  // called by: AcceptThread() -> socket = mmServerSocket.accept()
+  // called by: ConnectThread() / activity options menu (or NFC touch) -> connect() -> ConnectThread()
+  // called by: ConnectPopupActivity
+  def connected(socket: BluetoothSocket, remoteDevice: BluetoothDevice, socketType: String) :Unit = synchronized {
+    if(D) Log.i(TAG, "connected, sockettype="+socketType+" remoteDevice="+remoteDevice)
+    if(remoteDevice==null) return
+
+    val btAddrString = remoteDevice.getAddress()
+    val btNameString = remoteDevice.getName()
+
+    // reset sendMsgCounter for this remote device
+    sendMsgCounterMap.put(btAddrString, 0)
+    
+    // add remoteDevice to list of connected devices
+    directlyConnectedDevicesMap += remoteDevice -> mConnectedThread
+
+    // Start the thread to manage the connection and perform transmissions
+    if(D) Log.i(TAG, "connected, Start ConnectedThread to manage the connection")
+    mConnectedThread = new ConnectedThread(socket, socketType)
+    mConnectedThread.start()
+
+    if(directlyConnectedDevicesMap.size==1) {
+      // ONLY IF THIS IS OUR 1ST CONNECT
+      // todo: broadcast local and remote address as "just connected"
+    }
+
+    // Send the name of the connected device back to the UI Activity
+    // note: the main activity may not be active at this moment (but for instance the ConnectPopupActivity)
+    val msg = activityMsgHandler.obtainMessage(RFCommMultiplexerService.MESSAGE_DEVICE_NAME)
+    val bundle = new Bundle()
+    bundle.putString(RFCommMultiplexerService.DEVICE_NAME, btNameString)
+    bundle.putString(RFCommMultiplexerService.DEVICE_ADDR, btAddrString)
+    bundle.putString(RFCommMultiplexerService.SOCKET_TYPE, socketType)
+    msg.setData(bundle)
+    activityMsgHandler.sendMessage(msg)
+
+    // send to activity: MESSAGE_STATE_CHANGE
+    setState(RFCommMultiplexerService.STATE_CONNECTED)    
+
+    // send to activity: "[connected]" text message
+    queueMessageLinkedList synchronized {
+      queueMessageLinkedList.add(new QueueMessage(System.currentTimeMillis(), btAddrString, btNameString, "[connected]"))
+      checkQueueMaxSize()
     }
   }
 
@@ -646,6 +662,7 @@ class RFCommMultiplexerService extends android.app.Service {
       val receivedSendMsgCounter = btMessage.getArgCount()
       val lastSendMsgCounter = sendMsgCounterMap get fromAddr
 
+      // ignore double delivery
       if(lastSendMsgCounter!=None && receivedSendMsgCounter <= lastSendMsgCounter.get) {
         if(D) Log.i(TAG, "ConnectedThread run ignore msg cmd="+cmd+" counter="+receivedSendMsgCounter+" <= "+lastSendMsgCounter.get+" fromName="+fromName+" fromAddr="+fromAddr+" double delivery")
         return
@@ -681,9 +698,15 @@ class RFCommMultiplexerService extends android.app.Service {
           if(D) Log.i(TAG, "ConnectedThread run: basic behaviour arg1="+arg1+" toName="+toName)
 
           if(cmd.equals("ping")) {
-            var thisSendMsgCounter = 0
+
+            var thisSendMsgCounter:Long = 0
             synchronized { 
-              sendMsgCounter+=1
+              //sendMsgCounter+=1
+              val nowMs = SystemClock.uptimeMillis()
+              if(sendMsgCounter>=nowMs) 
+                sendMsgCounter+=1
+              else
+                sendMsgCounter=nowMs
               thisSendMsgCounter = sendMsgCounter
             }
             writeCmdMsg("pong", btMessage.getArg1(), fromAddr, thisSendMsgCounter)
@@ -786,7 +809,7 @@ class RFCommMultiplexerService extends android.app.Service {
      * Write a command with an arg to the connected OutStream.
      * @param message  The string to write
      */
-    def writeCmdMsg(cmd:String, message:String, toAddr:String, sendMsgCounter:Int) = synchronized {
+    def writeCmdMsg(cmd:String, message:String, toAddr:String, sendMsgCounter:Long) = synchronized {
       //if(D) Log.i(TAG, "writeCmdMsg cmd="+cmd+" message="+message+" toAddr="+toAddr+" myBtName="+myBtName+" myBtAddr="+myBtAddr)
       val btBuilder = BtShare.Message.newBuilder()
                                      .setArgCount(sendMsgCounter)

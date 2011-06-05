@@ -46,12 +46,12 @@ public final class BtShare {
     public boolean hasFromAddr() { return hasFromAddr; }
     public java.lang.String getFromAddr() { return fromAddr_; }
     
-    // required int32 argCount = 2;
+    // required int64 argCount = 2;
     public static final int ARGCOUNT_FIELD_NUMBER = 2;
     private boolean hasArgCount;
-    private int argCount_ = 0;
+    private long argCount_ = 0L;
     public boolean hasArgCount() { return hasArgCount; }
-    public int getArgCount() { return argCount_; }
+    public long getArgCount() { return argCount_; }
     
     // optional string arg1 = 3;
     public static final int ARG1_FIELD_NUMBER = 3;
@@ -119,7 +119,7 @@ public final class BtShare {
         output.writeString(1, getCommand());
       }
       if (hasArgCount()) {
-        output.writeInt32(2, getArgCount());
+        output.writeInt64(2, getArgCount());
       }
       if (hasArg1()) {
         output.writeString(3, getArg1());
@@ -162,7 +162,7 @@ public final class BtShare {
       }
       if (hasArgCount()) {
         size += com.google.protobuf.CodedOutputStream
-          .computeInt32Size(2, getArgCount());
+          .computeInt64Size(2, getArgCount());
       }
       if (hasArg1()) {
         size += com.google.protobuf.CodedOutputStream
@@ -400,7 +400,7 @@ public final class BtShare {
               break;
             }
             case 16: {
-              setArgCount(input.readInt32());
+              setArgCount(input.readInt64());
               break;
             }
             case 26: {
@@ -507,21 +507,21 @@ public final class BtShare {
         return this;
       }
       
-      // required int32 argCount = 2;
+      // required int64 argCount = 2;
       public boolean hasArgCount() {
         return result.hasArgCount();
       }
-      public int getArgCount() {
+      public long getArgCount() {
         return result.getArgCount();
       }
-      public Builder setArgCount(int value) {
+      public Builder setArgCount(long value) {
         result.hasArgCount = true;
         result.argCount_ = value;
         return this;
       }
       public Builder clearArgCount() {
         result.hasArgCount = false;
-        result.argCount_ = 0;
+        result.argCount_ = 0L;
         return this;
       }
       
@@ -682,499 +682,6 @@ public final class BtShare {
     }
     
     // @@protoc_insertion_point(class_scope:btshare.Message)
-  }
-  
-  public static final class Response extends
-      com.google.protobuf.GeneratedMessageLite {
-    // Use Response.newBuilder() to construct.
-    private Response() {
-      initFields();
-    }
-    private Response(boolean noInit) {}
-    
-    private static final Response defaultInstance;
-    public static Response getDefaultInstance() {
-      return defaultInstance;
-    }
-    
-    public Response getDefaultInstanceForType() {
-      return defaultInstance;
-    }
-    
-    // required string responseType = 1000;
-    public static final int RESPONSETYPE_FIELD_NUMBER = 1000;
-    private boolean hasResponseType;
-    private java.lang.String responseType_ = "";
-    public boolean hasResponseType() { return hasResponseType; }
-    public java.lang.String getResponseType() { return responseType_; }
-    
-    // optional string responseString = 1001;
-    public static final int RESPONSESTRING_FIELD_NUMBER = 1001;
-    private boolean hasResponseString;
-    private java.lang.String responseString_ = "";
-    public boolean hasResponseString() { return hasResponseString; }
-    public java.lang.String getResponseString() { return responseString_; }
-    
-    // optional int32 responseInt = 1002;
-    public static final int RESPONSEINT_FIELD_NUMBER = 1002;
-    private boolean hasResponseInt;
-    private int responseInt_ = 0;
-    public boolean hasResponseInt() { return hasResponseInt; }
-    public int getResponseInt() { return responseInt_; }
-    
-    // optional bool responseBool = 1003;
-    public static final int RESPONSEBOOL_FIELD_NUMBER = 1003;
-    private boolean hasResponseBool;
-    private boolean responseBool_ = false;
-    public boolean hasResponseBool() { return hasResponseBool; }
-    public boolean getResponseBool() { return responseBool_; }
-    
-    // optional float responseFloat = 1004;
-    public static final int RESPONSEFLOAT_FIELD_NUMBER = 1004;
-    private boolean hasResponseFloat;
-    private float responseFloat_ = 0F;
-    public boolean hasResponseFloat() { return hasResponseFloat; }
-    public float getResponseFloat() { return responseFloat_; }
-    
-    // optional double responseDouble = 1005;
-    public static final int RESPONSEDOUBLE_FIELD_NUMBER = 1005;
-    private boolean hasResponseDouble;
-    private double responseDouble_ = 0D;
-    public boolean hasResponseDouble() { return hasResponseDouble; }
-    public double getResponseDouble() { return responseDouble_; }
-    
-    // optional int64 responseLong = 1006;
-    public static final int RESPONSELONG_FIELD_NUMBER = 1006;
-    private boolean hasResponseLong;
-    private long responseLong_ = 0L;
-    public boolean hasResponseLong() { return hasResponseLong; }
-    public long getResponseLong() { return responseLong_; }
-    
-    private void initFields() {
-    }
-    public final boolean isInitialized() {
-      if (!hasResponseType) return false;
-      return true;
-    }
-    
-    public void writeTo(com.google.protobuf.CodedOutputStream output)
-                        throws java.io.IOException {
-      getSerializedSize();
-      if (hasResponseType()) {
-        output.writeString(1000, getResponseType());
-      }
-      if (hasResponseString()) {
-        output.writeString(1001, getResponseString());
-      }
-      if (hasResponseInt()) {
-        output.writeInt32(1002, getResponseInt());
-      }
-      if (hasResponseBool()) {
-        output.writeBool(1003, getResponseBool());
-      }
-      if (hasResponseFloat()) {
-        output.writeFloat(1004, getResponseFloat());
-      }
-      if (hasResponseDouble()) {
-        output.writeDouble(1005, getResponseDouble());
-      }
-      if (hasResponseLong()) {
-        output.writeInt64(1006, getResponseLong());
-      }
-    }
-    
-    private int memoizedSerializedSize = -1;
-    public int getSerializedSize() {
-      int size = memoizedSerializedSize;
-      if (size != -1) return size;
-    
-      size = 0;
-      if (hasResponseType()) {
-        size += com.google.protobuf.CodedOutputStream
-          .computeStringSize(1000, getResponseType());
-      }
-      if (hasResponseString()) {
-        size += com.google.protobuf.CodedOutputStream
-          .computeStringSize(1001, getResponseString());
-      }
-      if (hasResponseInt()) {
-        size += com.google.protobuf.CodedOutputStream
-          .computeInt32Size(1002, getResponseInt());
-      }
-      if (hasResponseBool()) {
-        size += com.google.protobuf.CodedOutputStream
-          .computeBoolSize(1003, getResponseBool());
-      }
-      if (hasResponseFloat()) {
-        size += com.google.protobuf.CodedOutputStream
-          .computeFloatSize(1004, getResponseFloat());
-      }
-      if (hasResponseDouble()) {
-        size += com.google.protobuf.CodedOutputStream
-          .computeDoubleSize(1005, getResponseDouble());
-      }
-      if (hasResponseLong()) {
-        size += com.google.protobuf.CodedOutputStream
-          .computeInt64Size(1006, getResponseLong());
-      }
-      memoizedSerializedSize = size;
-      return size;
-    }
-    
-    public static org.timur.btshare.BtShare.Response parseFrom(
-        com.google.protobuf.ByteString data)
-        throws com.google.protobuf.InvalidProtocolBufferException {
-      return newBuilder().mergeFrom(data).buildParsed();
-    }
-    public static org.timur.btshare.BtShare.Response parseFrom(
-        com.google.protobuf.ByteString data,
-        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
-        throws com.google.protobuf.InvalidProtocolBufferException {
-      return newBuilder().mergeFrom(data, extensionRegistry)
-               .buildParsed();
-    }
-    public static org.timur.btshare.BtShare.Response parseFrom(byte[] data)
-        throws com.google.protobuf.InvalidProtocolBufferException {
-      return newBuilder().mergeFrom(data).buildParsed();
-    }
-    public static org.timur.btshare.BtShare.Response parseFrom(
-        byte[] data,
-        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
-        throws com.google.protobuf.InvalidProtocolBufferException {
-      return newBuilder().mergeFrom(data, extensionRegistry)
-               .buildParsed();
-    }
-    public static org.timur.btshare.BtShare.Response parseFrom(java.io.InputStream input)
-        throws java.io.IOException {
-      return newBuilder().mergeFrom(input).buildParsed();
-    }
-    public static org.timur.btshare.BtShare.Response parseFrom(
-        java.io.InputStream input,
-        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
-        throws java.io.IOException {
-      return newBuilder().mergeFrom(input, extensionRegistry)
-               .buildParsed();
-    }
-    public static org.timur.btshare.BtShare.Response parseDelimitedFrom(java.io.InputStream input)
-        throws java.io.IOException {
-      Builder builder = newBuilder();
-      if (builder.mergeDelimitedFrom(input)) {
-        return builder.buildParsed();
-      } else {
-        return null;
-      }
-    }
-    public static org.timur.btshare.BtShare.Response parseDelimitedFrom(
-        java.io.InputStream input,
-        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
-        throws java.io.IOException {
-      Builder builder = newBuilder();
-      if (builder.mergeDelimitedFrom(input, extensionRegistry)) {
-        return builder.buildParsed();
-      } else {
-        return null;
-      }
-    }
-    public static org.timur.btshare.BtShare.Response parseFrom(
-        com.google.protobuf.CodedInputStream input)
-        throws java.io.IOException {
-      return newBuilder().mergeFrom(input).buildParsed();
-    }
-    public static org.timur.btshare.BtShare.Response parseFrom(
-        com.google.protobuf.CodedInputStream input,
-        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
-        throws java.io.IOException {
-      return newBuilder().mergeFrom(input, extensionRegistry)
-               .buildParsed();
-    }
-    
-    public static Builder newBuilder() { return Builder.create(); }
-    public Builder newBuilderForType() { return newBuilder(); }
-    public static Builder newBuilder(org.timur.btshare.BtShare.Response prototype) {
-      return newBuilder().mergeFrom(prototype);
-    }
-    public Builder toBuilder() { return newBuilder(this); }
-    
-    public static final class Builder extends
-        com.google.protobuf.GeneratedMessageLite.Builder<
-          org.timur.btshare.BtShare.Response, Builder> {
-      private org.timur.btshare.BtShare.Response result;
-      
-      // Construct using org.timur.btshare.BtShare.Response.newBuilder()
-      private Builder() {}
-      
-      private static Builder create() {
-        Builder builder = new Builder();
-        builder.result = new org.timur.btshare.BtShare.Response();
-        return builder;
-      }
-      
-      protected org.timur.btshare.BtShare.Response internalGetResult() {
-        return result;
-      }
-      
-      public Builder clear() {
-        if (result == null) {
-          throw new IllegalStateException(
-            "Cannot call clear() after build().");
-        }
-        result = new org.timur.btshare.BtShare.Response();
-        return this;
-      }
-      
-      public Builder clone() {
-        return create().mergeFrom(result);
-      }
-      
-      public org.timur.btshare.BtShare.Response getDefaultInstanceForType() {
-        return org.timur.btshare.BtShare.Response.getDefaultInstance();
-      }
-      
-      public boolean isInitialized() {
-        return result.isInitialized();
-      }
-      public org.timur.btshare.BtShare.Response build() {
-        if (result != null && !isInitialized()) {
-          throw newUninitializedMessageException(result);
-        }
-        return buildPartial();
-      }
-      
-      private org.timur.btshare.BtShare.Response buildParsed()
-          throws com.google.protobuf.InvalidProtocolBufferException {
-        if (!isInitialized()) {
-          throw newUninitializedMessageException(
-            result).asInvalidProtocolBufferException();
-        }
-        return buildPartial();
-      }
-      
-      public org.timur.btshare.BtShare.Response buildPartial() {
-        if (result == null) {
-          throw new IllegalStateException(
-            "build() has already been called on this Builder.");
-        }
-        org.timur.btshare.BtShare.Response returnMe = result;
-        result = null;
-        return returnMe;
-      }
-      
-      public Builder mergeFrom(org.timur.btshare.BtShare.Response other) {
-        if (other == org.timur.btshare.BtShare.Response.getDefaultInstance()) return this;
-        if (other.hasResponseType()) {
-          setResponseType(other.getResponseType());
-        }
-        if (other.hasResponseString()) {
-          setResponseString(other.getResponseString());
-        }
-        if (other.hasResponseInt()) {
-          setResponseInt(other.getResponseInt());
-        }
-        if (other.hasResponseBool()) {
-          setResponseBool(other.getResponseBool());
-        }
-        if (other.hasResponseFloat()) {
-          setResponseFloat(other.getResponseFloat());
-        }
-        if (other.hasResponseDouble()) {
-          setResponseDouble(other.getResponseDouble());
-        }
-        if (other.hasResponseLong()) {
-          setResponseLong(other.getResponseLong());
-        }
-        return this;
-      }
-      
-      public Builder mergeFrom(
-          com.google.protobuf.CodedInputStream input,
-          com.google.protobuf.ExtensionRegistryLite extensionRegistry)
-          throws java.io.IOException {
-        while (true) {
-          int tag = input.readTag();
-          switch (tag) {
-            case 0:
-              return this;
-            default: {
-              if (!parseUnknownField(input, extensionRegistry, tag)) {
-                return this;
-              }
-              break;
-            }
-            case 8002: {
-              setResponseType(input.readString());
-              break;
-            }
-            case 8010: {
-              setResponseString(input.readString());
-              break;
-            }
-            case 8016: {
-              setResponseInt(input.readInt32());
-              break;
-            }
-            case 8024: {
-              setResponseBool(input.readBool());
-              break;
-            }
-            case 8037: {
-              setResponseFloat(input.readFloat());
-              break;
-            }
-            case 8041: {
-              setResponseDouble(input.readDouble());
-              break;
-            }
-            case 8048: {
-              setResponseLong(input.readInt64());
-              break;
-            }
-          }
-        }
-      }
-      
-      
-      // required string responseType = 1000;
-      public boolean hasResponseType() {
-        return result.hasResponseType();
-      }
-      public java.lang.String getResponseType() {
-        return result.getResponseType();
-      }
-      public Builder setResponseType(java.lang.String value) {
-        if (value == null) {
-    throw new NullPointerException();
-  }
-  result.hasResponseType = true;
-        result.responseType_ = value;
-        return this;
-      }
-      public Builder clearResponseType() {
-        result.hasResponseType = false;
-        result.responseType_ = getDefaultInstance().getResponseType();
-        return this;
-      }
-      
-      // optional string responseString = 1001;
-      public boolean hasResponseString() {
-        return result.hasResponseString();
-      }
-      public java.lang.String getResponseString() {
-        return result.getResponseString();
-      }
-      public Builder setResponseString(java.lang.String value) {
-        if (value == null) {
-    throw new NullPointerException();
-  }
-  result.hasResponseString = true;
-        result.responseString_ = value;
-        return this;
-      }
-      public Builder clearResponseString() {
-        result.hasResponseString = false;
-        result.responseString_ = getDefaultInstance().getResponseString();
-        return this;
-      }
-      
-      // optional int32 responseInt = 1002;
-      public boolean hasResponseInt() {
-        return result.hasResponseInt();
-      }
-      public int getResponseInt() {
-        return result.getResponseInt();
-      }
-      public Builder setResponseInt(int value) {
-        result.hasResponseInt = true;
-        result.responseInt_ = value;
-        return this;
-      }
-      public Builder clearResponseInt() {
-        result.hasResponseInt = false;
-        result.responseInt_ = 0;
-        return this;
-      }
-      
-      // optional bool responseBool = 1003;
-      public boolean hasResponseBool() {
-        return result.hasResponseBool();
-      }
-      public boolean getResponseBool() {
-        return result.getResponseBool();
-      }
-      public Builder setResponseBool(boolean value) {
-        result.hasResponseBool = true;
-        result.responseBool_ = value;
-        return this;
-      }
-      public Builder clearResponseBool() {
-        result.hasResponseBool = false;
-        result.responseBool_ = false;
-        return this;
-      }
-      
-      // optional float responseFloat = 1004;
-      public boolean hasResponseFloat() {
-        return result.hasResponseFloat();
-      }
-      public float getResponseFloat() {
-        return result.getResponseFloat();
-      }
-      public Builder setResponseFloat(float value) {
-        result.hasResponseFloat = true;
-        result.responseFloat_ = value;
-        return this;
-      }
-      public Builder clearResponseFloat() {
-        result.hasResponseFloat = false;
-        result.responseFloat_ = 0F;
-        return this;
-      }
-      
-      // optional double responseDouble = 1005;
-      public boolean hasResponseDouble() {
-        return result.hasResponseDouble();
-      }
-      public double getResponseDouble() {
-        return result.getResponseDouble();
-      }
-      public Builder setResponseDouble(double value) {
-        result.hasResponseDouble = true;
-        result.responseDouble_ = value;
-        return this;
-      }
-      public Builder clearResponseDouble() {
-        result.hasResponseDouble = false;
-        result.responseDouble_ = 0D;
-        return this;
-      }
-      
-      // optional int64 responseLong = 1006;
-      public boolean hasResponseLong() {
-        return result.hasResponseLong();
-      }
-      public long getResponseLong() {
-        return result.getResponseLong();
-      }
-      public Builder setResponseLong(long value) {
-        result.hasResponseLong = true;
-        result.responseLong_ = value;
-        return this;
-      }
-      public Builder clearResponseLong() {
-        result.hasResponseLong = false;
-        result.responseLong_ = 0L;
-        return this;
-      }
-      
-      // @@protoc_insertion_point(builder_scope:btshare.Response)
-    }
-    
-    static {
-      defaultInstance = new Response(true);
-      org.timur.btshare.BtShare.internalForceInit();
-      defaultInstance.initFields();
-    }
-    
-    // @@protoc_insertion_point(class_scope:btshare.Response)
   }
   
   
