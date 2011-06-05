@@ -854,7 +854,8 @@ class RFCommMultiplexerService extends android.app.Service {
         } catch {
           case e: IOException =>
             Log.e(TAG, "writeBtShareMessage exception=", e)
-            sendToast("write exception "+e.getMessage())      // ???
+            sendToast("write exception "+e.getMessage())
+            // we actually receive: "java.io.IOException: Connection reset by peer"
         }
       }
     }
