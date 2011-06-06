@@ -174,13 +174,15 @@ class RFCommMultiplexerService extends android.app.Service {
     return mState
   }
 
+/*
   def getDirectlyConnectedDevicesMap() :HashMap[BluetoothDevice,ConnectedThread] = synchronized {
     return directlyConnectedDevicesMap
   }
+*/
 
-  def isConnectedDevices(newRemoteDeviceAddr: String) :Boolean  = synchronized {
+  def isDirectlyConnectedDevices(newRemoteDeviceAddr: String) :Boolean  = synchronized {
     directlyConnectedDevicesMap.foreach { case (remoteDevice, connectedThread) => 
-      if(connectedThread!=null)
+      if(connectedThread!=null && remoteDevice!=null)
         if(newRemoteDeviceAddr.equals(remoteDevice.getAddress()))
           return true
     }
@@ -226,7 +228,7 @@ class RFCommMultiplexerService extends android.app.Service {
     if(D) Log.i(TAG, "connect() remoteAddr="+newRemoteDevice.getAddress()+" name="+newRemoteDevice.getName()+" secure="+secure)
 
     // if newRemoteDevice is already listed in directlyConnectedDevicesMap, then we do nothing
-    if(isConnectedDevices(newRemoteDevice.getAddress())) {
+    if(isDirectlyConnectedDevices(newRemoteDevice.getAddress())) {
       if(D) Log.i(TAG, "connect() newRemoteDevice is already directly connected, give up")
       return
     }
@@ -292,10 +294,11 @@ class RFCommMultiplexerService extends android.app.Service {
       thisSendMsgCounter = sendMsgCounter
     }
     val myCmd = if(cmd==null) cmd else "strmsg"
-    if(D) Log.i(TAG, "send myCmd="+myCmd+" message="+message+" toAddr="+toAddr+" sendMsgCounter="+thisSendMsgCounter)
+    if(D) Log.i(TAG, "send myCmd="+myCmd+" message="+message+" toAddr="+toAddr+" sendMsgCounter="+thisSendMsgCounter+" directlyConnectedDevicesMap.size="+directlyConnectedDevicesMap.size)
     directlyConnectedDevicesMap.foreach { case (remoteDevice, connectedThread) => 
+      //if(D) Log.i(TAG, "send myCmd="+myCmd+" message="+message+" toAddr='"+toAddr+"' remoteDevice="+remoteDevice+" connectedThread="+connectedThread)
       if(connectedThread!=null) {
-        //if(D) Log.i(TAG, "send2 myCmd="+myCmd+" message="+message+" toAddr='"+toAddr+"' remoteDevice='"+remoteDevice.getAddress()+"'")
+        //if(D) Log.i(TAG, "send myCmd="+myCmd+" message="+message+" toAddr='"+toAddr+"' remoteDevice='"+remoteDevice.getAddress()+"'")
         connectedThread.writeCmdMsg(myCmd,message,toAddr,thisSendMsgCounter)
       }
     }
@@ -310,7 +313,7 @@ class RFCommMultiplexerService extends android.app.Service {
   }
 
   def ping(toAddr:String) {
-    if(D) Log.i(TAG, "ping toAddr="+toAddr)
+    if(D) Log.i(TAG, "ping toAddr="+toAddr+" directlyConnectedDevicesMap.size="+directlyConnectedDevicesMap.size)
     val nowMs = SystemClock.uptimeMillis()
     var thisSendMsgCounter:Long = 0
     synchronized { 
@@ -390,19 +393,20 @@ class RFCommMultiplexerService extends android.app.Service {
     // reset sendMsgCounter for this remote device
     sendMsgCounterMap.put(btAddrString, 0)
     
-    // add remoteDevice to list of connected devices
-    directlyConnectedDevicesMap += remoteDevice -> mConnectedThread
-
     // Start the thread to manage the connection and perform transmissions
     if(D) Log.i(TAG, "connected, Start ConnectedThread to manage the connection")
     mConnectedThread = new ConnectedThread(socket, socketType)
     mConnectedThread.start()
 
+    // add remoteDevice to list of connected devices
+    directlyConnectedDevicesMap += remoteDevice -> mConnectedThread
+
+/*
     if(directlyConnectedDevicesMap.size==1) {
       // ONLY IF THIS IS OUR 1ST CONNECT
       // todo: broadcast local and remote address as "just connected"
     }
-
+*/
     // Send the name of the connected device back to the UI Activity
     // note: the main activity may not be active at this moment (but for instance the ConnectPopupActivity)
     val msg = activityMsgHandler.obtainMessage(RFCommMultiplexerService.MESSAGE_DEVICE_NAME)
@@ -421,6 +425,8 @@ class RFCommMultiplexerService extends android.app.Service {
       queueMessageLinkedList.add(new QueueMessage(System.currentTimeMillis(), btAddrString, btNameString, "[connected]"))
       checkQueueMaxSize()
     }
+
+    if(D) Log.i(TAG, "connected done, directlyConnectedDevicesMap.size="+directlyConnectedDevicesMap.size)
   }
 
   // called by ConnectedThread() IOException on send()
@@ -689,7 +695,7 @@ class RFCommMultiplexerService extends android.app.Service {
       // todo: would be good to store a timestamp as "lastDataTime" from fromAddr
 
       // if fromAddr not listed in directlyConnectedDevicesMap, add it to indirectlyConnectedDevicesMap
-      if(!isConnectedDevices(fromAddr)) {
+      if(!isDirectlyConnectedDevices(fromAddr)) {
         val previouslyFound = indirectlyConnectedDevicesMap get fromAddr
         indirectlyConnectedDevicesMap += fromAddr -> new IndirectDeviceObject(fromName, System.currentTimeMillis())  // todo: missing info: connected via btAddr
         if(D) Log.i(TAG, "ConnectedThread run: added indirectlyConnectedDevice fromName="+fromName+" fromAddr="+fromAddr)
@@ -834,29 +840,29 @@ class RFCommMultiplexerService extends android.app.Service {
       if(D) Log.i(TAG, "ConnectedThread run " + socketType+ " DONE")
     }
 
-    def writeBtShareMessage(btMessage: BtShare.Message) {
-      if(btMessage!=null) {
-        try {
-          val size = btMessage.getSerializedSize()
-          if(D) Log.i(TAG, "writeBtShareMessage size="+size)
-          if(size>0) {
-            if(codedOutputStream!=null)
-              codedOutputStream synchronized {
-                if(codedOutputStream!=null)
-                  codedOutputStream.writeInt32NoTag(size)
-                if(codedOutputStream!=null)
-                  btMessage.writeTo(codedOutputStream)
-                if(codedOutputStream!=null)
-                  codedOutputStream.flush()
-              }
-            if(D) Log.i(TAG, "writeBtShareMessage flushed size="+size)
-          }
-        } catch {
-          case e: IOException =>
-            Log.e(TAG, "writeBtShareMessage exception=", e)
-            sendToast("write exception "+e.getMessage())
-            // we actually receive: "java.io.IOException: Connection reset by peer"
+    def writeBtShareMessage(btMessage: BtShare.Message) :Unit = {
+      if(D) Log.i(TAG, "writeBtShareMessage btMessage="+btMessage)
+      if(btMessage==null) return
+      try {
+        val size = btMessage.getSerializedSize()
+        if(D) Log.i(TAG, "writeBtShareMessage size="+size)
+        if(size>0) {
+          if(codedOutputStream!=null)
+            codedOutputStream synchronized {
+              if(codedOutputStream!=null)
+                codedOutputStream.writeInt32NoTag(size)
+              if(codedOutputStream!=null)
+                btMessage.writeTo(codedOutputStream)
+              if(codedOutputStream!=null)
+                codedOutputStream.flush()
+            }
+          if(D) Log.i(TAG, "writeBtShareMessage flushed size="+size)
         }
+      } catch {
+        case e: IOException =>
+          Log.e(TAG, "writeBtShareMessage exception=", e)
+          sendToast("write exception "+e.getMessage())
+          // we actually receive: "java.io.IOException: Connection reset by peer"
       }
     }
 
@@ -865,7 +871,7 @@ class RFCommMultiplexerService extends android.app.Service {
      * @param message  The string to write
      */
     def writeCmdMsg(cmd:String, message:String, toAddr:String, sendMsgCounter:Long) = synchronized {
-      //if(D) Log.i(TAG, "writeCmdMsg cmd="+cmd+" message="+message+" toAddr="+toAddr+" myBtName="+myBtName+" myBtAddr="+myBtAddr)
+      if(D) Log.i(TAG, "writeCmdMsg cmd="+cmd+" message="+message+" toAddr="+toAddr+" myBtName="+myBtName+" myBtAddr="+myBtAddr)
       val btBuilder = BtShare.Message.newBuilder()
                                      .setArgCount(sendMsgCounter)
                                      .setFromName(myBtName)
@@ -881,6 +887,7 @@ class RFCommMultiplexerService extends android.app.Service {
       if(toAddr!=null)
         btBuilder.setToAddr(toAddr)
 
+/*
       try {
         writeBtShareMessage(btBuilder.build())
       } catch {
@@ -888,6 +895,8 @@ class RFCommMultiplexerService extends android.app.Service {
           Log.e(TAG, "writeCmdMsg exception=", e)
           sendToast("write exception "+e.getMessage())      // ???
       }
+*/
+      writeBtShareMessage(btBuilder.build())
     }
 
     def writeData(size:Int, data:Array[Byte]) {
