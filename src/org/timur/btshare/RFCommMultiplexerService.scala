@@ -174,12 +174,6 @@ class RFCommMultiplexerService extends android.app.Service {
     return mState
   }
 
-/*
-  def getDirectlyConnectedDevicesMap() :HashMap[BluetoothDevice,ConnectedThread] = synchronized {
-    return directlyConnectedDevicesMap
-  }
-*/
-
   def isDirectlyConnectedDevices(newRemoteDeviceAddr: String) :Boolean  = synchronized {
     directlyConnectedDevicesMap.foreach { case (remoteDevice, connectedThread) => 
       if(connectedThread!=null && remoteDevice!=null)
@@ -887,15 +881,6 @@ class RFCommMultiplexerService extends android.app.Service {
       if(toAddr!=null)
         btBuilder.setToAddr(toAddr)
 
-/*
-      try {
-        writeBtShareMessage(btBuilder.build())
-      } catch {
-        case e: IOException =>
-          Log.e(TAG, "writeCmdMsg exception=", e)
-          sendToast("write exception "+e.getMessage())      // ???
-      }
-*/
       writeBtShareMessage(btBuilder.build())
     }
 
