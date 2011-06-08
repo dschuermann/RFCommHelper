@@ -669,6 +669,17 @@ class RFCommMultiplexerService extends android.app.Service {
       }
     }
 
+
+    private def splitString(line:String, delim:List[String]) :List[String] = delim match {
+      case head :: tail => 
+        var myList = List()
+        for(item <- line.split(head).toList)
+          myList ::: splitString(item, tail)
+        return myList
+      case Nil => 
+        return List(line.trim)
+    }
+
     private def processReceivedRawData(rawdata:Array[Byte]) :Unit = synchronized {
       val btMessage = BtShare.Message.parseFrom(rawdata)
       val cmd = btMessage.getCommand()
@@ -688,7 +699,7 @@ class RFCommMultiplexerService extends android.app.Service {
       
       // todo: would be good to store a timestamp as "lastDataTime" from fromAddr
 
-      // if fromAddr not listed in directlyConnectedDevicesMap, add it to indirectlyConnectedDevicesMap
+      // if fromAddr not listed in directlyConnectedDevicesMap, then add it to indirectlyConnectedDevicesMap
       if(!isDirectlyConnectedDevices(fromAddr)) {
         val previouslyFound = indirectlyConnectedDevicesMap get fromAddr
         indirectlyConnectedDevicesMap += fromAddr -> new IndirectDeviceObject(fromName, System.currentTimeMillis())  // todo: missing info: connected via btAddr
@@ -705,7 +716,21 @@ class RFCommMultiplexerService extends android.app.Service {
       }
 
       
-      if(toAddr!=null && toAddr.length>0 && !toAddr.equals(myBtAddr)) {
+      // toAddr may be null (data is for everyone) or it can be a comma separated list
+      var dataForMe = true
+      var numberOfToAddr = 0
+      if(toAddr!=null && toAddr.length>0) {
+        dataForMe = false
+        // see if myBtAddr is part of targetList
+        val targetList = splitString(toAddr,List(","))
+        if((targetList.foldLeft(false)( _ || myBtAddr.contains(_) ))) {
+          dataForMe = true
+          numberOfToAddr = targetList.size
+        }
+      }
+
+      //old: if(toAddr!=null && toAddr.length>0 && !toAddr.equals(myBtAddr)) {
+      if(!dataForMe) {
         // NOT for me: don't process
         if(D) Log.i(TAG, "ConnectedThread run: not for me, don't process - toAddr="+toAddr)
 
@@ -795,7 +820,7 @@ class RFCommMultiplexerService extends android.app.Service {
         }
       }
 
-      if(toAddr!=null && toAddr.length>0 && toAddr.equals(myBtAddr)) {
+      if(dataForMe && toAddr!=null && toAddr.length>0 && numberOfToAddr==1) {
         // ONLY for me: don't forward
         //if(D) Log.i(TAG, "ConnectedThread run - only for me, don't forward")
       } else {
