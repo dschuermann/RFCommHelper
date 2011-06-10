@@ -30,6 +30,7 @@
 package org.timur.btshare
 
 import scala.collection.mutable.HashMap
+import scala.collection.mutable.ListBuffer
 
 import java.io.IOException
 import java.io.InputStream
@@ -669,13 +670,16 @@ class RFCommMultiplexerService extends android.app.Service {
       }
     }
 
-
     private def splitString(line:String, delim:List[String]) :List[String] = delim match {
       case head :: tail => 
-        var myList = List()
-        for(item <- line.split(head).toList)
-          myList ::: splitString(item, tail)
-        return myList
+        val listBuffer = new ListBuffer[String]
+        //if(D) Log.i(TAG, "ConnectedThread run: splitString line="+line)
+        for(addr <- line.split(head).toList) {
+          listBuffer += addr
+          //if(D) Log.i(TAG, "ConnectedThread run: splitString addr="+addr+" listBuffer.size="+listBuffer.size)
+        }
+        //if(D) Log.i(TAG, "ConnectedThread run: splitString listBuffer.size="+listBuffer.size)
+        return listBuffer.toList
       case Nil => 
         return List(line.trim)
     }
@@ -721,18 +725,19 @@ class RFCommMultiplexerService extends android.app.Service {
       var numberOfToAddr = 0
       if(toAddr!=null && toAddr.length>0) {
         dataForMe = false
-        // see if myBtAddr is part of targetList
+        // check if myBtAddr is part of targetList
         val targetList = splitString(toAddr,List(","))
-        if((targetList.foldLeft(false)( _ || myBtAddr.contains(_) ))) {
+        //if(D) Log.i(TAG, "ConnectedThread run: targetList.size="+targetList.size)
+        //targetList.foreach(addr => if(D) Log.i(TAG, "ConnectedThread run: foreach "+addr+" contained="+myBtAddr.contains(addr)) )
+        targetList.foreach(addr => if(myBtAddr.contains(addr)) {
           dataForMe = true
           numberOfToAddr = targetList.size
-        }
+        })
       }
 
-      //old: if(toAddr!=null && toAddr.length>0 && !toAddr.equals(myBtAddr)) {
       if(!dataForMe) {
         // NOT for me: don't process
-        if(D) Log.i(TAG, "ConnectedThread run: not for me, don't process - toAddr="+toAddr)
+        if(D) Log.i(TAG, "ConnectedThread run: NOT for me="+myBtAddr+", don't process - toAddr="+toAddr)
 
       } else {
         // for me OR for all: do process
@@ -820,7 +825,7 @@ class RFCommMultiplexerService extends android.app.Service {
         }
       }
 
-      if(dataForMe && toAddr!=null && toAddr.length>0 && numberOfToAddr==1) {
+      if(dataForMe /*&& toAddr!=null && toAddr.length>0*/ && numberOfToAddr==1) {
         // ONLY for me: don't forward
         //if(D) Log.i(TAG, "ConnectedThread run - only for me, don't forward")
       } else {
