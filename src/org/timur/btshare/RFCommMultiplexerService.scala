@@ -105,8 +105,8 @@ class RFCommMultiplexerService extends android.app.Service {
 
   // Member fields for the local bluetooth adapter
   protected val mAdapter = BluetoothAdapter.getDefaultAdapter()
-  protected val myBtName = mAdapter.getName()
-  protected val myBtAddr = mAdapter.getAddress()
+  protected var myBtName = mAdapter.getName()
+  protected var myBtAddr = mAdapter.getAddress()
   
   protected var context:Context = null
   protected var activityMsgHandler:Handler = null
@@ -191,6 +191,12 @@ class RFCommMultiplexerService extends android.app.Service {
     if(D) Log.i(TAG, "start: android.os.Build.VERSION.SDK_INT="+android.os.Build.VERSION.SDK_INT)
 
     setState(RFCommMultiplexerService.STATE_LISTEN)   // will send MESSAGE_STATE_CHANGE
+
+    // in case bt was turned on after app start
+    if(myBtName==null)
+      myBtName = mAdapter.getName()
+    if(myBtAddr==null)
+      myBtAddr = mAdapter.getAddress()
 
     // Start the thread to listen on a BluetoothServerSocket
     if(mSecureAcceptThread == null) {
