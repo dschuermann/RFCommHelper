@@ -61,7 +61,7 @@ object RFCommMultiplexerService {
   val STATE_LISTEN = 1     // not yet connected but listening for incoming connections
   val STATE_CONNECTED = 3  // connected to at least one remote device
 
-  // Message types sent from the RFCommMultiplexerService Handler
+  // Message types sent from RFCommMultiplexerService to the activity handler
   val MESSAGE_STATE_CHANGE = 1
   val MESSAGE_READ = 2
   val MESSAGE_WRITE = 3
@@ -73,7 +73,7 @@ object RFCommMultiplexerService {
   val CONNECTION_START = 9
   val MESSAGE_REDRAW_DEVICEVIEW = 10
 
-  // Key names received from the RFCommMultiplexerService Handler
+  // Key names received from RFCommMultiplexerService to the activity handler
   val DEVICE_NAME = "device_name"
   val DEVICE_ADDR = "device_addr"
   val SOCKET_TYPE = "socket_type"
