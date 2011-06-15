@@ -30,6 +30,7 @@
 package org.timur.btshare
 
 import scala.collection.mutable.HashMap
+import scala.collection.mutable.ListBuffer
 
 import java.io.IOException
 import java.io.InputStream
@@ -60,7 +61,7 @@ object RFCommMultiplexerService {
   val STATE_LISTEN = 1     // not yet connected but listening for incoming connections
   val STATE_CONNECTED = 3  // connected to at least one remote device
 
-  // Message types sent from the RFCommMultiplexerService Handler
+  // Message types sent from RFCommMultiplexerService to the activity handler
   val MESSAGE_STATE_CHANGE = 1
   val MESSAGE_READ = 2
   val MESSAGE_WRITE = 3
@@ -72,7 +73,7 @@ object RFCommMultiplexerService {
   val CONNECTION_START = 9
   val MESSAGE_REDRAW_DEVICEVIEW = 10
 
-  // Key names received from the RFCommMultiplexerService Handler
+  // Key names received from RFCommMultiplexerService to the activity handler
   val DEVICE_NAME = "device_name"
   val DEVICE_ADDR = "device_addr"
   val SOCKET_TYPE = "socket_type"
@@ -104,8 +105,8 @@ class RFCommMultiplexerService extends android.app.Service {
 
   // Member fields for the local bluetooth adapter
   protected val mAdapter = BluetoothAdapter.getDefaultAdapter()
-  protected val myBtName = mAdapter.getName()
-  protected val myBtAddr = mAdapter.getAddress()
+  protected var myBtName = mAdapter.getName()
+  protected var myBtAddr = mAdapter.getAddress()
   
   protected var context:Context = null
   protected var activityMsgHandler:Handler = null
@@ -183,6 +184,11 @@ class RFCommMultiplexerService extends android.app.Service {
     return false
   }
 
+  def getAllConnecedDevicesMap() : HashMap[String,Long] = { // btAddrString, sendMsgCounterInt
+    //Log.d(TAG, "getAllConnecedDevicesMap()")
+    return sendMsgCounterMap
+  }
+
   // called by Activity onResume() 
   // but only while getState() == STATE_NONE
   // this is why we quickly switch state to STATE_LISTEN
@@ -190,6 +196,12 @@ class RFCommMultiplexerService extends android.app.Service {
     if(D) Log.i(TAG, "start: android.os.Build.VERSION.SDK_INT="+android.os.Build.VERSION.SDK_INT)
 
     setState(RFCommMultiplexerService.STATE_LISTEN)   // will send MESSAGE_STATE_CHANGE
+
+    // in case bt was turned on after app start
+    if(myBtName==null)
+      myBtName = mAdapter.getName()
+    if(myBtAddr==null)
+      myBtAddr = mAdapter.getAddress()
 
     // Start the thread to listen on a BluetoothServerSocket
     if(mSecureAcceptThread == null) {
@@ -211,6 +223,8 @@ class RFCommMultiplexerService extends android.app.Service {
     if(D) Log.i(TAG, "start: done")
   }
 
+  @volatile var connectingCount = 0
+
   // called by the activity: options menu "connect" -> onActivityResult() -> connectDevice()
   // called by the activity: as a result of NfcAdapter.ACTION_NDEF_DISCOVERED
   def connect(newRemoteDevice:BluetoothDevice, secure:Boolean, reportConnectState:Boolean=true) :Unit = synchronized {
@@ -226,6 +240,8 @@ class RFCommMultiplexerService extends android.app.Service {
       if(D) Log.i(TAG, "connect() newRemoteDevice is already directly connected, give up")
       return
     }
+
+    connectingCount+=1
 
     if(reportConnectState) {
       val msg = activityMsgHandler.obtainMessage(RFCommMultiplexerService.CONNECTION_START)
@@ -606,15 +622,17 @@ class RFCommMultiplexerService extends android.app.Service {
           } catch {
             case e2: IOException =>
               Log.e(TAG, "unable to close() " + mSocketType + " socket during connection failure", e2)
-          }
-          if(reportConnectState) {
-            // need to tell the activity that the connection has failed - and that the connect-animation/busy-image can be disabled/made invisible
-            val msg = activityMsgHandler.obtainMessage(RFCommMultiplexerService.CONNECTION_FAILED)
-            val bundle = new Bundle()
-            bundle.putString(RFCommMultiplexerService.DEVICE_ADDR, remoteDevice.getAddress())
-            bundle.putString(RFCommMultiplexerService.DEVICE_NAME, remoteDevice.getName())
-            msg.setData(bundle)
-            activityMsgHandler.sendMessage(msg)
+          } finally {
+            connectingCount-=1
+            if(reportConnectState) {
+              // need to tell the activity that the connection has failed - and that the connect-animation/busy-image can be disabled/made invisible
+              val msg = activityMsgHandler.obtainMessage(RFCommMultiplexerService.CONNECTION_FAILED)
+              val bundle = new Bundle()
+              bundle.putString(RFCommMultiplexerService.DEVICE_ADDR, remoteDevice.getAddress())
+              bundle.putString(RFCommMultiplexerService.DEVICE_NAME, remoteDevice.getName())
+              msg.setData(bundle)
+              activityMsgHandler.sendMessage(msg)
+            }
           }
           return
       }
@@ -626,6 +644,8 @@ class RFCommMultiplexerService extends android.app.Service {
 
       // Start the connected thread
       connected(mmSocket, remoteDevice, mSocketType)
+
+      connectingCount-=1
     }
 
     def cancel() {
@@ -669,6 +689,20 @@ class RFCommMultiplexerService extends android.app.Service {
       }
     }
 
+    private def splitString(line:String, delim:List[String]) :List[String] = delim match {
+      case head :: tail => 
+        val listBuffer = new ListBuffer[String]
+        //if(D) Log.i(TAG, "ConnectedThread run: splitString line="+line)
+        for(addr <- line.split(head).toList) {
+          listBuffer += addr
+          //if(D) Log.i(TAG, "ConnectedThread run: splitString addr="+addr+" listBuffer.size="+listBuffer.size)
+        }
+        //if(D) Log.i(TAG, "ConnectedThread run: splitString listBuffer.size="+listBuffer.size)
+        return listBuffer.toList
+      case Nil => 
+        return List(line.trim)
+    }
+
     private def processReceivedRawData(rawdata:Array[Byte]) :Unit = synchronized {
       val btMessage = BtShare.Message.parseFrom(rawdata)
       val cmd = btMessage.getCommand()
@@ -688,7 +722,7 @@ class RFCommMultiplexerService extends android.app.Service {
       
       // todo: would be good to store a timestamp as "lastDataTime" from fromAddr
 
-      // if fromAddr not listed in directlyConnectedDevicesMap, add it to indirectlyConnectedDevicesMap
+      // if fromAddr not listed in directlyConnectedDevicesMap, then add it to indirectlyConnectedDevicesMap
       if(!isDirectlyConnectedDevices(fromAddr)) {
         val previouslyFound = indirectlyConnectedDevicesMap get fromAddr
         indirectlyConnectedDevicesMap += fromAddr -> new IndirectDeviceObject(fromName, System.currentTimeMillis())  // todo: missing info: connected via btAddr
@@ -705,9 +739,24 @@ class RFCommMultiplexerService extends android.app.Service {
       }
 
       
-      if(toAddr!=null && toAddr.length>0 && !toAddr.equals(myBtAddr)) {
+      // toAddr may be null (data is for everyone) or it can be a comma separated list
+      var dataForMe = true
+      var numberOfToAddr = 0
+      if(toAddr!=null && toAddr.length>0) {
+        dataForMe = false
+        // check if myBtAddr is part of targetList
+        val targetList = splitString(toAddr,List(","))
+        //if(D) Log.i(TAG, "ConnectedThread run: targetList.size="+targetList.size)
+        //targetList.foreach(addr => if(D) Log.i(TAG, "ConnectedThread run: foreach "+addr+" contained="+myBtAddr.contains(addr)) )
+        targetList.foreach(addr => if(myBtAddr.contains(addr)) {
+          dataForMe = true
+          numberOfToAddr = targetList.size
+        })
+      }
+
+      if(!dataForMe) {
         // NOT for me: don't process
-        if(D) Log.i(TAG, "ConnectedThread run: not for me, don't process - toAddr="+toAddr)
+        if(D) Log.i(TAG, "ConnectedThread run: NOT for me="+myBtAddr+", don't process - toAddr="+toAddr)
 
       } else {
         // for me OR for all: do process
@@ -795,7 +844,7 @@ class RFCommMultiplexerService extends android.app.Service {
         }
       }
 
-      if(toAddr!=null && toAddr.length>0 && toAddr.equals(myBtAddr)) {
+      if(dataForMe /*&& toAddr!=null && toAddr.length>0*/ && numberOfToAddr==1) {
         // ONLY for me: don't forward
         //if(D) Log.i(TAG, "ConnectedThread run - only for me, don't forward")
       } else {
