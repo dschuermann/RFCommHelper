@@ -171,7 +171,7 @@ class RFCommMultiplexerService extends android.app.Service {
     return false // return false if msg was not processed
   }
 
-  def getState() :Int = synchronized {
+  def getState() :Int = /*synchronized*/ {
     return mState
   }
 
@@ -290,7 +290,7 @@ class RFCommMultiplexerService extends android.app.Service {
     send(null, message, toAddr)
   }
 
-  def send(cmd:String, message:String, toAddr:String) = synchronized {
+  def send(cmd:String, message:String, toAddr:String) /*= synchronized*/ {
     // the idea with synchronized is that no other send() shall take over (will interrupt) an ongoing send()
     var thisSendMsgCounter:Long = 0
     synchronized { 
@@ -306,9 +306,9 @@ class RFCommMultiplexerService extends android.app.Service {
     val myCmd = if(cmd==null) cmd else "strmsg"
     if(D) Log.i(TAG, "send myCmd="+myCmd+" message="+message+" toAddr="+toAddr+" sendMsgCounter="+thisSendMsgCounter+" directlyConnectedDevicesMap.size="+directlyConnectedDevicesMap.size)
     directlyConnectedDevicesMap.foreach { case (remoteDevice, connectedThread) => 
-      //if(D) Log.i(TAG, "send myCmd="+myCmd+" message="+message+" toAddr='"+toAddr+"' remoteDevice="+remoteDevice+" connectedThread="+connectedThread)
+      if(D) Log.i(TAG, "send myCmd="+myCmd+" message="+message+" toAddr='"+toAddr+"' remoteDevice="+remoteDevice+" connectedThread="+connectedThread)
       if(connectedThread!=null) {
-        //if(D) Log.i(TAG, "send myCmd="+myCmd+" message="+message+" toAddr='"+toAddr+"' remoteDevice='"+remoteDevice.getAddress()+"'")
+        if(D) Log.i(TAG, "send myCmd="+myCmd+" message="+message+" toAddr='"+toAddr+"' remoteDevice='"+remoteDevice.getAddress()+"'")
         connectedThread.writeCmdMsg(myCmd,message,toAddr,thisSendMsgCounter)
       }
     }
@@ -318,6 +318,8 @@ class RFCommMultiplexerService extends android.app.Service {
       //if(D) Log.i(TAG, "send 'Share the sent message back to the UI Activity'")
       activityMsgHandler.obtainMessage(RFCommMultiplexerService.MESSAGE_WRITE, -1, -1, message).sendToTarget()
     }
+    
+    // todo: share other message types with the UI Activity as well
 
     if(D) Log.i(TAG, "send myCmd="+myCmd+" DONE")
   }
@@ -366,7 +368,7 @@ class RFCommMultiplexerService extends android.app.Service {
 
   // private methods
 
-  protected def setState(state: Int) = synchronized {
+  protected def setState(state: Int) /*= synchronized*/ {
     if(D) Log.i(TAG, "setState() " + mState + " -> " + state)
     mState = state
     // Give the new state to the Handler so the UI Activity can update
@@ -411,7 +413,8 @@ class RFCommMultiplexerService extends android.app.Service {
     // add remoteDevice to list of connected devices
     directlyConnectedDevicesMap += remoteDevice -> mConnectedThread
 
-    // todo: remove this device from indirectlyConnectedDevicesMap !!!
+    // remove remoteDevice from indirectlyConnectedDevicesMap - just in case!!!
+    indirectlyConnectedDevicesMap -= btAddrString
 
 /*
     if(directlyConnectedDevicesMap.size==1) {
@@ -705,7 +708,7 @@ class RFCommMultiplexerService extends android.app.Service {
         return List(line.trim)
     }
 
-    private def processReceivedRawData(rawdata:Array[Byte]) :Unit = synchronized {
+    private def processReceivedRawData(rawdata:Array[Byte]) :Unit = /*synchronized*/ {
       val btMessage = BtShare.Message.parseFrom(rawdata)
       val cmd = btMessage.getCommand()
       val toAddr = btMessage.getToAddr()
@@ -890,7 +893,7 @@ class RFCommMultiplexerService extends android.app.Service {
       if(btMessage==null) return
       try {
         val size = btMessage.getSerializedSize()
-        if(D) Log.i(TAG, "writeBtShareMessage size="+size)
+        if(D) Log.i(TAG, "writeBtShareMessage size="+size+" =================================================")
         if(size>0) {
           if(codedOutputStream!=null)
             codedOutputStream synchronized {
@@ -915,7 +918,7 @@ class RFCommMultiplexerService extends android.app.Service {
      * Write a command with an arg to the connected OutStream.
      * @param message  The string to write
      */
-    def writeCmdMsg(cmd:String, message:String, toAddr:String, sendMsgCounter:Long) = synchronized {
+    def writeCmdMsg(cmd:String, message:String, toAddr:String, sendMsgCounter:Long) /*= synchronized*/ {
       if(D) Log.i(TAG, "writeCmdMsg cmd="+cmd+" message="+message+" toAddr="+toAddr+" myBtName="+myBtName+" myBtAddr="+myBtAddr)
       val btBuilder = BtShare.Message.newBuilder()
                                      .setArgCount(sendMsgCounter)
@@ -936,7 +939,7 @@ class RFCommMultiplexerService extends android.app.Service {
     }
 
     def writeData(size:Int, data:Array[Byte]) {
-      if(D) Log.i(TAG, "writeData size="+size)
+      if(D) Log.i(TAG, "writeData size="+size+" =============================================")
       try {
         codedOutputStream synchronized {
           codedOutputStream.writeInt32NoTag(size)
@@ -944,6 +947,7 @@ class RFCommMultiplexerService extends android.app.Service {
             codedOutputStream.writeRawBytes(data,0,size)
           codedOutputStream.flush()
         }
+        if(D) Log.i(TAG, "writeData flushed size="+size)
       } catch {
         case e: IOException =>
           Log.e(TAG, "writeData exception=", e)
