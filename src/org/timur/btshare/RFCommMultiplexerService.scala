@@ -411,6 +411,8 @@ class RFCommMultiplexerService extends android.app.Service {
     // add remoteDevice to list of connected devices
     directlyConnectedDevicesMap += remoteDevice -> mConnectedThread
 
+    // todo: remove this device from indirectlyConnectedDevicesMap !!!
+
 /*
     if(directlyConnectedDevicesMap.size==1) {
       // ONLY IF THIS IS OUR 1ST CONNECT
