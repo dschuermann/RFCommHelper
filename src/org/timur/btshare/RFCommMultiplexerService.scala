@@ -790,10 +790,15 @@ class RFCommMultiplexerService extends android.app.Service {
             writeCmdMsg("pong", btMessage.getArg1, fromAddr, thisSendMsgCounter)
 
           } else if(cmd.equals("pong")) {
-            val sendMs = new java.lang.Integer(arg1).intValue
-            val nowMs = SystemClock.uptimeMillis
-            val diffMs = nowMs - sendMs
-            activityMsgHandler.obtainMessage(RFCommMultiplexerService.RECEIVED_PONG, -1, -1, fromAddr+","+diffMs).sendToTarget
+            try {
+              val sendMs = new java.lang.Integer(arg1).intValue
+              val nowMs = SystemClock.uptimeMillis
+              val diffMs = nowMs - sendMs
+              activityMsgHandler.obtainMessage(RFCommMultiplexerService.RECEIVED_PONG, -1, -1, fromAddr+","+diffMs).sendToTarget
+            } catch {
+              case ex: java.lang.NumberFormatException =>
+                Log.e(TAG, "ConnectedThread NumberFormatException cmd=pong arg1="+arg1+" ex="+ex)
+            }
 
           } else if(cmd.equals("disconnect")) {
             // note: this can be wrong info, if the "disconencted" device is still connected via another device
@@ -938,7 +943,7 @@ class RFCommMultiplexerService extends android.app.Service {
     }
 
     def writeData(size:Int, data:Array[Byte]) {
-      if(D) Log.i(TAG, "writeData size="+size+" =============================================")
+      //if(D) Log.i(TAG, "writeData size="+size+" =============================================")
       try {
         codedOutputStream synchronized {
           codedOutputStream.writeInt32NoTag(size)
@@ -946,7 +951,7 @@ class RFCommMultiplexerService extends android.app.Service {
             codedOutputStream.writeRawBytes(data,0,size)
           codedOutputStream.flush
         }
-        if(D) Log.i(TAG, "writeData flushed size="+size)
+        //if(D) Log.i(TAG, "writeData flushed size="+size)
       } catch {
         case e: IOException =>
           Log.e(TAG, "writeData exception=", e)
