@@ -779,7 +779,6 @@ class RFCommMultiplexerService extends android.app.Service {
 
             var thisSendMsgCounter:Long = 0
             synchronized { 
-              //sendMsgCounter+=1
               val nowMs = SystemClock.uptimeMillis
               if(sendMsgCounter>=nowMs) 
                 sendMsgCounter+=1
@@ -860,10 +859,11 @@ class RFCommMultiplexerService extends android.app.Service {
         // NOT only for me: forward obtained message to all devices in connectedDevicesSet except to fromAddr
         // so that ALL data is ALWAYS received IDENTICALLY by ALL clients 
         directlyConnectedDevicesMap.foreach { case (remoteDevice, connectedThread) => 
-          if(!remoteDevice.getAddress.equals(fromAddr) && 
-             !remoteDevice.getAddress.equals(connectedBtAddr)) {    // todo: explain ???
+          if(/*!remoteDevice.getAddress.equals(fromAddr) && */
+             !remoteDevice.getAddress.equals(connectedBtAddr)) {    // forward this data only, if the selected device is NOT the one, where this data just came from!
             if(D) Log.i(TAG, "ConnectedThread forward cmd="+cmd+" from="+fromAddr+" to="+remoteDevice.getAddress)
             connectedThread.writeBtShareMessage(btMessage)
+            // Q: will it be clear to the receiver, that this data is not from us, but from fromAddr? yes!
           }
         }
       }
