@@ -293,7 +293,6 @@ class RFCommMultiplexerService extends android.app.Service {
   def send(cmd:String, message:String, toAddr:String) /*= synchronized*/ {
     var thisSendMsgCounter:Long = 0
     synchronized { 
-      //sendMsgCounter+=1
       val nowMs = SystemClock.uptimeMillis
       if(sendMsgCounter>=nowMs) 
         sendMsgCounter+=1
