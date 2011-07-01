@@ -293,8 +293,7 @@ class RFCommMultiplexerService extends android.app.Service {
     // the idea with synchronized is that no other send() shall take over (will interrupt) an ongoing send()
     var thisSendMsgCounter:Long = 0
     synchronized { 
-      //sendMsgCounter+=1
-      val nowMs = SystemClock.uptimeMillis()
+      val nowMs = SystemClock.uptimeMillis
       if(sendMsgCounter>=nowMs) 
         sendMsgCounter+=1
       else
