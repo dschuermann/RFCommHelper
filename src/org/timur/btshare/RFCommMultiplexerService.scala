@@ -57,7 +57,7 @@ import com.google.protobuf.CodedOutputStream
 import com.google.protobuf.CodedInputStream
 
 object RFCommMultiplexerService {
-  val LOGLINES = 50        // todo: a little arbitrary number
+  val LOGLINES = 50        // todo: an arbitrary number
 
   val STATE_NONE = 0       // doing nothing
   val STATE_LISTEN = 1     // not yet connected but listening for incoming connections
@@ -890,32 +890,7 @@ class RFCommMultiplexerService extends android.app.Service {
     def writeBtShareMessage(btMessage:BtShare.Message) :Unit = {
       if(D) Log.i(TAG, "writeBtShareMessage btMessage="+btMessage)
       if(btMessage==null) return
-
-      // todo: fifo queue btMessage - and actually send it from somewhere else
       sendQueue += btMessage
-/*
-      try {
-        val size = btMessage.getSerializedSize()
-        if(D) Log.i(TAG, "writeBtShareMessage size="+size)
-        if(size>0) {
-          if(codedOutputStream!=null)
-            codedOutputStream synchronized {
-              if(codedOutputStream!=null)
-                codedOutputStream.writeInt32NoTag(size)
-              if(codedOutputStream!=null)
-                btMessage.writeTo(codedOutputStream)
-              if(codedOutputStream!=null)
-                codedOutputStream.flush()
-            }
-          if(D) Log.i(TAG, "writeBtShareMessage flushed size="+size)
-        }
-      } catch {
-        case e: IOException =>
-          Log.e(TAG, "writeBtShareMessage exception=", e)
-          sendToast("write exception "+e.getMessage())
-          // we actually receive: "java.io.IOException: Connection reset by peer"
-      }
-*/
     }
 
     /**
@@ -943,39 +918,11 @@ class RFCommMultiplexerService extends android.app.Service {
     }
 
     def writeData(size:Int, data:Array[Byte]) {
+      // queue the Array
       if(D) Log.i(TAG, "ConnectedThread writeData size="+size)
-
-/*
-      if(size<data.size) {
-*/
-        // queue some part of the Array
-        var sendData = new Array[Byte](size)
-        Array.copy(data,0,sendData,0,size)
-        sendQueue += sendData
-/*
-      } else {
-        // queue the complete Array
-        sendQueue += data
-      }
-*/
-
-/*
-      if(D) Log.i(TAG, "ConnectedThread writeData "+sendData.asInstanceOf[AnyRef].getClass.getSimpleName)
+      var sendData = new Array[Byte](size)
+      Array.copy(data,0,sendData,0,size)
       sendQueue += sendData
-
-      try {
-        codedOutputStream synchronized {
-          codedOutputStream.writeInt32NoTag(size)
-          if(size>0)
-            codedOutputStream.writeRawBytes(data,0,size)
-          codedOutputStream.flush()
-        }
-      } catch {
-        case e: IOException =>
-          Log.e(TAG, "writeData exception=", e)
-          sendToast("writeData "+e.getMessage())
-      }
-*/
     }
 
     def cancel() {
@@ -991,7 +938,6 @@ class RFCommMultiplexerService extends android.app.Service {
       }
 
       codedInputStream = null
-      //codedOutputStream = null
       mConnectedSendThread.halt()
 
       if(socket != null) {
@@ -1016,15 +962,10 @@ class RFCommMultiplexerService extends android.app.Service {
               if(D) Log.i(TAG, "ConnectedSendThread run BtShare.Message")
               writeBtShareMessage(obj.asInstanceOf[BtShare.Message])
             } else {
-            //if(obj.isInstanceOf[Array[Byte]]) {
               val data = obj.asInstanceOf[Array[Byte]]
               if(D) Log.i(TAG, "ConnectedSendThread run Array[Byte] size="+data.size)
               writeData(data.size, data)
-            } /* else {
-              try {
-                if(D) Log.i(TAG, "ConnectedSendThread run dequeue-problem1 "+obj.asInstanceOf[AnyRef].getClass.getSimpleName)
-              } catch { case ex:Exception => }
-            }*/
+            }
           } else {
             try { Thread.sleep(200); } catch { case ex:Exception => }
           }
