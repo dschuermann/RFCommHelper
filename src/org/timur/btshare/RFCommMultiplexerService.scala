@@ -1009,6 +1009,7 @@ class RFCommMultiplexerService extends android.app.Service {
     var running = false
     var totalSend = 0
     var blobId:Long = 0
+    var contentLength:Long = 0
     
     val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE).asInstanceOf[ActivityManager]
     val memoryInfo = new ActivityManager.MemoryInfo()
@@ -1026,7 +1027,7 @@ class RFCommMultiplexerService extends android.app.Service {
               // a new blob delivery is starting...
               totalSend = 0
               blobId = btShareMessage.getId
-              // length = btShareMessage.getDataLength
+              contentLength = btShareMessage.getDataLength
             } else {
               val data = obj.asInstanceOf[Array[Byte]]
 
@@ -1037,7 +1038,8 @@ class RFCommMultiplexerService extends android.app.Service {
               // a new blob delivery is in progress... (if data.size==0 then this is the end of this blob delivery)
               totalSend += data.size
               
-              // todo: if data.size == 0, message back blobId to activity
+              // todo: if data.size == 0, message back "blobId finished" to activity
+              // todo: else if contentLength > 0, message back "percentage progress" to activity
             }
           } else {
             try { Thread.sleep(200); } catch { case ex:Exception => }
