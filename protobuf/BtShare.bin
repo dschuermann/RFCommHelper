@@ -1,11 +1,15 @@
 
-õ
-BtShare.protobtshare"º
+•
+BtShare.protobtshare"Ú
 Message
 command (	
 fromName (	
 fromAddr (	
-argCount (
+argCount (
+
+id (
+
+dataLength	 (
 arg1 (	
 arg2 (	
 arg3 (	

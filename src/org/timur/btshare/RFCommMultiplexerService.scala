@@ -709,11 +709,11 @@ class RFCommMultiplexerService extends android.app.Service {
 
     private def processReceivedRawData(rawdata:Array[Byte]) :Unit = synchronized {
       val btMessage = BtShare.Message.parseFrom(rawdata)
-      val cmd = btMessage.getCommand()
-      val toAddr = btMessage.getToAddr()
-      val fromAddr = btMessage.getFromAddr()
-      val fromName = btMessage.getFromName()
-      val receivedSendMsgCounter = btMessage.getArgCount()
+      val cmd = btMessage.getCommand
+      val toAddr = btMessage.getToAddr
+      val fromAddr = btMessage.getFromAddr
+      val fromName = btMessage.getFromName
+      val receivedSendMsgCounter = btMessage.getArgCount
       val lastSendMsgCounter = sendMsgCounterMap get fromAddr
 
       // ignore double delivery
@@ -766,8 +766,8 @@ class RFCommMultiplexerService extends android.app.Service {
         // for me OR for all: do process
         if(D) Log.i(TAG, "ConnectedThread run: read1 cmd="+cmd+" fromName="+fromName+" fromAddr="+fromAddr+" toAddr="+toAddr+" receivedSendMsgCounter="+receivedSendMsgCounter)
 
-        val toName = btMessage.getToName()
-        val arg1 = btMessage.getArg1()  // the text message
+        val toName = btMessage.getToName
+        val arg1 = btMessage.getArg1  // the text message
 
         // plug-in app-specific behaviour
         if(!processBtMessage(cmd, arg1, fromAddr, btMessage, codedInputStream)) {
@@ -787,7 +787,7 @@ class RFCommMultiplexerService extends android.app.Service {
                 sendMsgCounter=nowMs
               thisSendMsgCounter = sendMsgCounter
             }
-            writeCmdMsg("pong", btMessage.getArg1(), fromAddr, thisSendMsgCounter)
+            writeCmdMsg("pong", btMessage.getArg1, fromAddr, thisSendMsgCounter)
 
           } else if(cmd.equals("pong")) {
             val sendMs = new java.lang.Integer(arg1).intValue()
@@ -895,7 +895,7 @@ class RFCommMultiplexerService extends android.app.Service {
       sendQueue += btMessage
 /*
       try {
-        val size = btMessage.getSerializedSize()
+        val size = btMessage.getSerializedSize
         if(D) Log.i(TAG, "writeBtShareMessage size="+size)
         if(size>0) {
           if(codedOutputStream!=null)
@@ -1008,6 +1008,7 @@ class RFCommMultiplexerService extends android.app.Service {
     if(D) Log.i(TAG, "ConnectedSendThread start")
     var running = false
     var totalSend = 0
+    var blobId:Long = 0
     
     val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE).asInstanceOf[ActivityManager]
     val memoryInfo = new ActivityManager.MemoryInfo()
@@ -1020,9 +1021,12 @@ class RFCommMultiplexerService extends android.app.Service {
             val obj = sendQueue.dequeue
             if(obj.isInstanceOf[BtShare.Message]) {
               if(D) Log.i(TAG, "ConnectedSendThread run BtShare.Message")
-              writeBtShareMessage(obj.asInstanceOf[BtShare.Message])
+              val btShareMessage = obj.asInstanceOf[BtShare.Message]
+              writeBtShareMessage(btShareMessage)
               // a new blob delivery is starting...
               totalSend = 0
+              blobId = btShareMessage.getId
+              // length = btShareMessage.getDataLength
             } else {
               val data = obj.asInstanceOf[Array[Byte]]
 
@@ -1032,6 +1036,8 @@ class RFCommMultiplexerService extends android.app.Service {
               writeData(data.size, data)
               // a new blob delivery is in progress... (if data.size==0 then this is the end of this blob delivery)
               totalSend += data.size
+              
+              // todo: if data.size == 0, message back blobId to activity
             }
           } else {
             try { Thread.sleep(200); } catch { case ex:Exception => }
@@ -1055,7 +1061,7 @@ class RFCommMultiplexerService extends android.app.Service {
       if(btMessage==null) return
 
       try {
-        val size = btMessage.getSerializedSize()
+        val size = btMessage.getSerializedSize
         if(D) Log.i(TAG, "ConnectedSendThread writeBtShareMessage size="+size)
         if(size>0) {
           if(codedOutputStream!=null)
