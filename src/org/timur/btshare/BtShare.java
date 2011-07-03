@@ -53,14 +53,14 @@ public final class BtShare {
     public boolean hasArgCount() { return hasArgCount; }
     public long getArgCount() { return argCount_; }
     
-    // required int64 id = 8;
+    // optional int64 id = 8;
     public static final int ID_FIELD_NUMBER = 8;
     private boolean hasId;
     private long id_ = 0L;
     public boolean hasId() { return hasId; }
     public long getId() { return id_; }
     
-    // required int64 dataLength = 9;
+    // optional int64 dataLength = 9;
     public static final int DATALENGTH_FIELD_NUMBER = 9;
     private boolean hasDataLength;
     private long dataLength_ = 0L;
@@ -123,8 +123,6 @@ public final class BtShare {
       if (!hasFromName) return false;
       if (!hasFromAddr) return false;
       if (!hasArgCount) return false;
-      if (!hasId) return false;
-      if (!hasDataLength) return false;
       return true;
     }
     
@@ -569,7 +567,7 @@ public final class BtShare {
         return this;
       }
       
-      // required int64 id = 8;
+      // optional int64 id = 8;
       public boolean hasId() {
         return result.hasId();
       }
@@ -587,7 +585,7 @@ public final class BtShare {
         return this;
       }
       
-      // required int64 dataLength = 9;
+      // optional int64 dataLength = 9;
       public boolean hasDataLength() {
         return result.hasDataLength();
       }

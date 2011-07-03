@@ -11,8 +11,8 @@ message Message {
   required string fromAddr    = 21;
 
   required int64  argCount    = 2;
-  required int64  id          = 8;
-  required int64  dataLength  = 9;
+  optional int64  id          = 8;
+  optional int64  dataLength  = 9;
 
   optional string arg1        = 3;
   optional string arg2        = 4;
