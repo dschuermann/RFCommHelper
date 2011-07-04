@@ -75,12 +75,15 @@ object RFCommMultiplexerService {
   val CONNECTION_FAILED = 8
   val CONNECTION_START = 9
   val MESSAGE_REDRAW_DEVICEVIEW = 10
+  val MESSAGE_DELIVER_PROGRESS = 11
 
   // Key names received from RFCommMultiplexerService to the activity handler
   val DEVICE_NAME = "device_name"
   val DEVICE_ADDR = "device_addr"
   val SOCKET_TYPE = "socket_type"
   val TOAST = "toast"
+  val DELIVER_ID = "deliver_id"
+  val DELIVER_PROGRESS = "deliver_progress"
 } 
 
 class QueueMessage(createTimeMs:Long=0l, deviceAddr:String=null, deviceName:String=null, strmsg:String=null) {
@@ -945,6 +948,7 @@ class RFCommMultiplexerService extends android.app.Service {
     def writeData(size:Int, data:Array[Byte]) {
       if(D) Log.i(TAG, "ConnectedThread writeData size="+size)
 
+// todo out of memory issue
       // queue some part of the Array
       var sendData:Array[Byte] = null
       while(sendData==null) {
@@ -1010,6 +1014,7 @@ class RFCommMultiplexerService extends android.app.Service {
     var totalSend = 0
     var blobId:Long = 0
     var contentLength:Long = 0
+    var progressLastStep:Long = 0
     
     val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE).asInstanceOf[ActivityManager]
     val memoryInfo = new ActivityManager.MemoryInfo()
@@ -1028,11 +1033,12 @@ class RFCommMultiplexerService extends android.app.Service {
               totalSend = 0
               blobId = btShareMessage.getId
               contentLength = btShareMessage.getDataLength
+              progressLastStep = 0
             } else {
               val data = obj.asInstanceOf[Array[Byte]]
 
               activityManager.getMemoryInfo(memoryInfo)
-              if(D) Log.i(TAG, "ConnectedSendThread run Array[Byte] size="+data.size+" totalSend="+totalSend+" memoryInfo.availMem="+memoryInfo.availMem+" memoryInfo.lowMemory="+memoryInfo.lowMemory)
+              if(D) Log.i(TAG, "ConnectedSendThread run Array[Byte] size="+data.size+" totalSend="+totalSend+" progressLastStep+contentLength/5="+(progressLastStep+contentLength/5)+" contentLength="+contentLength +" ######################")
 
               writeData(data.size, data)
               // a new blob delivery is in progress... (if data.size==0 then this is the end of this blob delivery)
@@ -1040,6 +1046,26 @@ class RFCommMultiplexerService extends android.app.Service {
               
               // todo: if data.size == 0, message back "blobId finished" to activity
               // todo: else if contentLength > 0, message back "percentage progress" to activity
+              if(data.size == 0) {
+                val msg = activityMsgHandler.obtainMessage(RFCommMultiplexerService.MESSAGE_DELIVER_PROGRESS)
+                val bundle = new Bundle()
+                bundle.putLong(RFCommMultiplexerService.DELIVER_ID, blobId)
+                bundle.putInt(RFCommMultiplexerService.DELIVER_PROGRESS, 100)
+                msg.setData(bundle)
+                activityMsgHandler.sendMessage(msg)
+              } 
+
+              else
+              if(contentLength>0 && totalSend>progressLastStep+contentLength/20) {
+                progressLastStep += contentLength/20  // 5% steps seems ideal for progress bar
+
+                val msg = activityMsgHandler.obtainMessage(RFCommMultiplexerService.MESSAGE_DELIVER_PROGRESS)
+                val bundle = new Bundle()
+                bundle.putLong(RFCommMultiplexerService.DELIVER_ID, blobId)
+                bundle.putInt(RFCommMultiplexerService.DELIVER_PROGRESS, (progressLastStep/(contentLength/100)).asInstanceOf[Int] )
+                msg.setData(bundle)
+                activityMsgHandler.sendMessage(msg)
+              }
             }
           } else {
             try { Thread.sleep(200); } catch { case ex:Exception => }
@@ -1087,7 +1113,7 @@ class RFCommMultiplexerService extends android.app.Service {
     }
 
     private def writeData(size:Int, data:Array[Byte]) {
-      if(D) Log.i(TAG, "ConnectedSendThread writeData size="+size)
+      //if(D) Log.i(TAG, "ConnectedSendThread writeData size="+size)
 
       try {
         codedOutputStream synchronized {
