@@ -119,7 +119,7 @@ class RFCommMultiplexerService extends android.app.Service {
 
   protected val queueMessageLinkedList = new LinkedList[QueueMessage]()
 
-  private val sendQueue = new scala.collection.mutable.Queue[Any]
+//  private val sendQueue = new scala.collection.mutable.Queue[Any]
 
 
   def getAllMsgsNewerThan(lastMsgTimeMillis:Long) :ArrayList[QueueMessage] = {
@@ -344,17 +344,19 @@ class RFCommMultiplexerService extends android.app.Service {
   }
 
   def sendData(size:Int, data:Array[Byte], toAddr:String) {
-    //if(D) Log.i(TAG, "sendData size="+size+" toAddr="+toAddr)
+    if(D) Log.i(TAG, "sendData size="+size+" toAddr="+toAddr)
     directlyConnectedDevicesMap.foreach { case (remoteDevice, connectedThread) => 
+      if(D) Log.i(TAG, "sendData remoteDevice.getAddress()="+remoteDevice.getAddress()+" connectedThread="+connectedThread)
       if(connectedThread!=null)
-        if(toAddr==null || remoteDevice.getAddress().equals(toAddr)) {
+        //if(toAddr==null || remoteDevice.getAddress().equals(toAddr)) {      // quatsch: toAddr can be a string with multiple bt-addr's
           try {
+            if(D) Log.i(TAG, "sendData remoteDevice.getAddress()="+remoteDevice.getAddress()+" connectedThread="+connectedThread)   
             connectedThread.writeData(size, data)
           } catch {
             case e: IOException =>
               Log.e(TAG, "sendData exception during write", e)
           }
-        }
+        //}
     }
   }
 
@@ -660,13 +662,14 @@ class RFCommMultiplexerService extends android.app.Service {
     }
   }
 
-  class ConnectedThread(socket: BluetoothSocket, socketType: String) extends Thread {
+  class ConnectedThread(socket:BluetoothSocket, socketType:String) extends Thread {
     if(D) Log.i(TAG, "ConnectedThread start " + socketType)
     private var mmInStream: InputStream = null
     private var codedInputStream: CodedInputStream = null
     private var mmOutStream: OutputStream = null
     //private var codedOutputStream: CodedOutputStream = null
     private var mConnectedSendThread: ConnectedSendThread = null
+    private val sendQueue = new scala.collection.mutable.Queue[Any]
 
     var connectedBluetoothDevice:BluetoothDevice = null
     var connectedBtAddr:String = null
@@ -687,7 +690,7 @@ class RFCommMultiplexerService extends android.app.Service {
         mmOutStream = socket.getOutputStream()
         //codedOutputStream =  CodedOutputStream.newInstance(mmOutStream)
         // todo: start fifo queue delivery via codedOutputStream
-        mConnectedSendThread = new ConnectedSendThread(CodedOutputStream.newInstance(mmOutStream))
+        mConnectedSendThread = new ConnectedSendThread(sendQueue,CodedOutputStream.newInstance(mmOutStream),socket)
         mConnectedSendThread.start()
 
       } catch {
@@ -891,7 +894,7 @@ class RFCommMultiplexerService extends android.app.Service {
     }
 
     def writeBtShareMessage(btMessage:BtShare.Message) :Unit = {
-      if(D) Log.i(TAG, "writeBtShareMessage btMessage="+btMessage)
+      if(D) Log.i(TAG, "ConnectedThread writeBtShareMessage btMessage="+btMessage)
       if(btMessage==null) return
 
       // todo: fifo queue btMessage - and actually send it from somewhere else
@@ -926,7 +929,7 @@ class RFCommMultiplexerService extends android.app.Service {
      * @param message  The string to write
      */
     def writeCmdMsg(cmd:String, message:String, toAddr:String, sendMsgCounter:Long) = synchronized {
-      if(D) Log.i(TAG, "writeCmdMsg cmd="+cmd+" message="+message+" toAddr="+toAddr+" myBtName="+myBtName+" myBtAddr="+myBtAddr)
+      if(D) Log.i(TAG, "writeCmdMsg cmd="+cmd+" message="+message+" socket="+socket) //+" toAddr="+toAddr+" myBtName="+myBtName+" myBtAddr="+myBtAddr)
       val btBuilder = BtShare.Message.newBuilder()
                                      .setArgCount(sendMsgCounter)
                                      .setFromName(myBtName)
@@ -944,6 +947,7 @@ class RFCommMultiplexerService extends android.app.Service {
 
       writeBtShareMessage(btBuilder.build())
     }
+
 
     def writeData(size:Int, data:Array[Byte]) {
       if(D) Log.i(TAG, "ConnectedThread writeData size="+size)
@@ -1008,7 +1012,7 @@ class RFCommMultiplexerService extends android.app.Service {
   }
 
 
-  class ConnectedSendThread(var codedOutputStream:CodedOutputStream) extends Thread {
+  class ConnectedSendThread(sendQueue:scala.collection.mutable.Queue[Any], var codedOutputStream:CodedOutputStream, socket:BluetoothSocket) extends Thread {
     if(D) Log.i(TAG, "ConnectedSendThread start")
     var running = false
     var totalSend = 0
@@ -1038,7 +1042,7 @@ class RFCommMultiplexerService extends android.app.Service {
               val data = obj.asInstanceOf[Array[Byte]]
 
               activityManager.getMemoryInfo(memoryInfo)
-              if(D) Log.i(TAG, "ConnectedSendThread run Array[Byte] size="+data.size+" totalSend="+totalSend+" progressLastStep+contentLength/5="+(progressLastStep+contentLength/5)+" contentLength="+contentLength +" ######################")
+              if(D) Log.i(TAG, "ConnectedSendThread run size="+data.size+" totalSend="+totalSend+" progressLastStep+contentLength/5="+(progressLastStep+contentLength/5)+" contentLength="+contentLength +" ######################")
 
               writeData(data.size, data)
               // a new blob delivery is in progress... (if data.size==0 then this is the end of this blob delivery)
@@ -1073,9 +1077,8 @@ class RFCommMultiplexerService extends android.app.Service {
         }
       } catch {
         case e: IOException =>
-          if(D) Log.i(TAG, "ConnectedSendThread run ex="+e)
-          //connectionLost(socket)
-          // todo!
+          if(D) Log.i(TAG, "ConnectedSendThread socket="+socket+" run ex="+e)
+          connectionLost(socket)
       }
       if(D) Log.i(TAG, "ConnectedSendThread run DONE ###################################################")
     }
@@ -1084,47 +1087,51 @@ class RFCommMultiplexerService extends android.app.Service {
       codedOutputStream=null
     }
 
-    private def writeBtShareMessage(btMessage:BtShare.Message) :Unit = {
-      if(D) Log.i(TAG, "ConnectedSendThread writeBtShareMessage btMessage="+btMessage)
+    private def writeBtShareMessage(btMessage:BtShare.Message) :Unit = synchronized {
+      if(D) Log.i(TAG, "ConnectedSendThread writeBtShareMessage btMessage="+btMessage+" socket="+socket)
       if(btMessage==null) return
 
       try {
         val size = btMessage.getSerializedSize
-        if(D) Log.i(TAG, "ConnectedSendThread writeBtShareMessage size="+size)
+        //if(D) Log.i(TAG, "ConnectedSendThread writeBtShareMessage size="+size)
         if(size>0) {
           if(codedOutputStream!=null)
-            codedOutputStream synchronized {
+            //codedOutputStream synchronized {
               if(codedOutputStream!=null)
                 codedOutputStream.writeInt32NoTag(size)
               if(codedOutputStream!=null)
                 btMessage.writeTo(codedOutputStream)
               if(codedOutputStream!=null)
                 codedOutputStream.flush()
-            }
-          if(D) Log.i(TAG, "ConnectedSendThread writeBtShareMessage flushed size="+size)
+            //}
+          if(D) Log.i(TAG, "ConnectedSendThread writeBtShareMessage flushed size="+size+" codedOutputStream="+codedOutputStream)
         }
       } catch {
         case ex: IOException =>
-          Log.e(TAG, "ConnectedSendThread writeBtShareMessage ioexception", ex)
+          Log.e(TAG, "ConnectedSendThread writeBtShareMessage socket="+socket+" ioexception", ex)
           sendToast("ConnectedSendThread write exception "+ex.getMessage())
           // we receive: "java.io.IOException: Connection reset by peer"
           // or:         "java.io.IOException: Transport endpoint is not connected"
+          halt()
+          connectionLost(socket)
       }
     }
 
-    private def writeData(size:Int, data:Array[Byte]) {
-      //if(D) Log.i(TAG, "ConnectedSendThread writeData size="+size)
+    private def writeData(size:Int, data:Array[Byte]) = synchronized {
+      //if(D) Log.i(TAG, "ConnectedSendThread writeData size="+size+" socket="+socket)
 
       try {
-        codedOutputStream synchronized {
+        //codedOutputStream synchronized {
           codedOutputStream.writeInt32NoTag(size)
           if(size>0)
             codedOutputStream.writeRawBytes(data,0,size)
           codedOutputStream.flush()
-        }
+        //}
       } catch {
         case e: IOException =>
-          Log.e(TAG, "ConnectedSendThread writeData exception=", e)
+          halt()
+          connectionLost(socket)
+          Log.e(TAG, "ConnectedSendThread writeData socket="+socket+" exception=", e)
           sendToast("ConnectedSendThread writeData "+e.getMessage())
       }
     }
