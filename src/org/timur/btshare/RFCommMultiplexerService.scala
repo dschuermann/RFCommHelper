@@ -169,7 +169,15 @@ class RFCommMultiplexerService extends android.app.Service {
   val localBinder = new LocalBinder
   override def onBind(intent:Intent) :IBinder = localBinder 
 
+/*
   def processBtMessage(cmd:String, arg1:String, fromAddr:String, btMessage:BtShare.Message, codedInputStream:CodedInputStream): Boolean = {
+    // this method may be overloaded to implement app specific protocol extensions
+    return false // return false if msg was not processed
+  }
+*/
+//def processBtMessage(cmd:String, arg1:String, fromAddr:String, btMessage:BtShare.Message)(methodToFetchBlocksOfDataFromCodedInputStream): Boolean = {
+//def processBtMessage(cmd:String, arg1:String, fromAddr:String, btMessage:BtShare.Message)(codedInputStream:CodedInputStream): Boolean = {
+  def processBtMessage(cmd:String, arg1:String, fromAddr:String, btMessage:BtShare.Message)(readCodedInputStream:() => Array[Byte]): Boolean = {
     // this method may be overloaded to implement app specific protocol extensions
     return false // return false if msg was not processed
   }
@@ -699,6 +707,20 @@ class RFCommMultiplexerService extends android.app.Service {
       }
     }
 
+/*
+    def readCodedInputStream() :Array[Byte] = {
+      if(D) Log.i(TAG, "ConnectedThread processReceivedRawData: processBtMessage closure...")
+      var size = codedInputStream.readInt32 // may block
+      if(D) Log.i(TAG, "ConnectedThread processReceivedRawData codedInputStream first size="+size)
+      if(size>0 /*&& running*/) {      // todo: must implement running-check
+        //if(D) Log.i(TAG, "ConnectedThread processReceivedRawData wait for "+size+" bytes data ...")
+        val rawdata = codedInputStream.readRawBytes(size)     // may be aborted by call to cancel
+        // TODO: forward data, if "NOT only for me", to other directly connected devices
+        return rawdata
+      }
+      return null
+    }
+*/
     private def splitString(line:String, delim:List[String]) :List[String] = delim match {
       case head :: tail => 
         val listBuffer = new ListBuffer[String]
@@ -724,7 +746,7 @@ class RFCommMultiplexerService extends android.app.Service {
 
       // ignore double delivery
       if(lastSendMsgCounter!=None && receivedSendMsgCounter <= lastSendMsgCounter.get) {
-        if(D) Log.i(TAG, "ConnectedThread run ignore msg cmd="+cmd+" counter="+receivedSendMsgCounter+" <= "+lastSendMsgCounter.get+" fromName="+fromName+" fromAddr="+fromAddr+" double delivery")
+        if(D) Log.i(TAG, "ConnectedThread processReceivedRawData ignore msg cmd="+cmd+" counter="+receivedSendMsgCounter+" <= "+lastSendMsgCounter.get+" fromName="+fromName+" fromAddr="+fromAddr+" double delivery")
         return
       }
 
@@ -736,7 +758,7 @@ class RFCommMultiplexerService extends android.app.Service {
       if(!isDirectlyConnectedDevices(fromAddr)) {
         val previouslyFound = indirectlyConnectedDevicesMap get fromAddr
         indirectlyConnectedDevicesMap += fromAddr -> new IndirectDeviceObject(fromName, System.currentTimeMillis())  // todo: missing info: connected via btAddr
-        if(D) Log.i(TAG, "ConnectedThread run: added indirectlyConnectedDevice fromName="+fromName+" fromAddr="+fromAddr)
+        if(D) Log.i(TAG, "ConnectedThread processReceivedRawData: added indirectlyConnectedDevice fromName="+fromName+" fromAddr="+fromAddr)
 
         previouslyFound match {
           case None => 
@@ -756,7 +778,7 @@ class RFCommMultiplexerService extends android.app.Service {
         dataForMe = false
         // check if myBtAddr is part of targetList
         val targetList = splitString(toAddr,List(","))
-        //if(D) Log.i(TAG, "ConnectedThread run: targetList.size="+targetList.size)
+        //if(D) Log.i(TAG, "ConnectedThread processReceivedRawData: targetList.size="+targetList.size)
         //targetList.foreach(addr => if(D) Log.i(TAG, "ConnectedThread run: foreach "+addr+" contained="+myBtAddr.contains(addr)) )
         targetList.foreach(addr => if(myBtAddr.contains(addr)) {
           dataForMe = true
@@ -766,18 +788,32 @@ class RFCommMultiplexerService extends android.app.Service {
 
       if(!dataForMe) {
         // NOT for me: don't process
-        if(D) Log.i(TAG, "ConnectedThread run: NOT for me="+myBtAddr+", don't process - toAddr="+toAddr)
+        if(D) Log.i(TAG, "ConnectedThread processReceivedRawData: NOT for me="+myBtAddr+", don't process - toAddr="+toAddr)
 
       } else {
         // for me OR for all: do process
-        if(D) Log.i(TAG, "ConnectedThread run: read1 cmd="+cmd+" fromName="+fromName+" fromAddr="+fromAddr+" toAddr="+toAddr+" receivedSendMsgCounter="+receivedSendMsgCounter)
+        if(D) Log.i(TAG, "ConnectedThread processReceivedRawData: read1 cmd="+cmd+" fromName="+fromName+" fromAddr="+fromAddr+" toAddr="+toAddr+" receivedSendMsgCounter="+receivedSendMsgCounter)
 
         val toName = btMessage.getToName
         val arg1 = btMessage.getArg1  // the text message
+        
 
         // plug-in app-specific behaviour
-        if(!processBtMessage(cmd, arg1, fromAddr, btMessage, codedInputStream)) {
-
+//      if(!processBtMessage(cmd, arg1, fromAddr, btMessage)(codedInputStream)) {
+        if(!processBtMessage(cmd, arg1, fromAddr, btMessage){
+          () =>
+          if(D) Log.i(TAG, "ConnectedThread processReceivedRawData: processBtMessage closure...")
+          var size = codedInputStream.readInt32 // may block
+          if(D) Log.i(TAG, "ConnectedThread processReceivedRawData codedInputStream first size="+size)
+          if(size>0 /*&& running*/) {      // todo: must implement running-check
+            //if(D) Log.i(TAG, "ConnectedThread processReceivedRawData wait for "+size+" bytes data ...")
+            val rawdata = codedInputStream.readRawBytes(size)     // may be aborted by call to cancel
+            // TODO: forward data, if "NOT only for me", to other directly connected devices
+            return rawdata
+          }
+          return null
+        }) {
+        
           // basic behaviour: ping, pong + strmsg
           if(D) Log.i(TAG, "ConnectedThread run: basic behaviour arg1="+arg1+" toName="+toName)
 
@@ -858,10 +894,10 @@ class RFCommMultiplexerService extends android.app.Service {
         // ONLY for me: don't forward
         //if(D) Log.i(TAG, "ConnectedThread run - only for me, don't forward")
       } else {
-        // NOT only for me: forward obtained message to all devices in connectedDevicesSet except to fromAddr
+        // NOT "only for me": forward obtained message to all devices in connectedDevicesSet except to fromAddr
         // so that ALL data is ALWAYS received IDENTICALLY by ALL clients 
         directlyConnectedDevicesMap.foreach { case (remoteDevice, connectedThread) => 
-          if(!remoteDevice.getAddress().equals(fromAddr) &&           // todo: not required?
+          if(/*!remoteDevice.getAddress().equals(fromAddr) && */          // todo: not required?
              !remoteDevice.getAddress().equals(connectedBtAddr)) {    // prevent sending broadcasted data back to where it came from
             if(D) Log.i(TAG, "ConnectedThread forward cmd="+cmd+" from="+fromAddr+" to="+remoteDevice.getAddress())
             connectedThread.writeBtShareMessage(btMessage)
