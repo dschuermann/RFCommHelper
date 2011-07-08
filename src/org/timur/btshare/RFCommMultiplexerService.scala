@@ -169,16 +169,9 @@ class RFCommMultiplexerService extends android.app.Service {
   val localBinder = new LocalBinder
   override def onBind(intent:Intent) :IBinder = localBinder 
 
-/*
-  def processBtMessage(cmd:String, arg1:String, fromAddr:String, btMessage:BtShare.Message, codedInputStream:CodedInputStream): Boolean = {
-    // this method may be overloaded to implement app specific protocol extensions
-    return false // return false if msg was not processed
-  }
-*/
-//def processBtMessage(cmd:String, arg1:String, fromAddr:String, btMessage:BtShare.Message)(methodToFetchBlocksOfDataFromCodedInputStream): Boolean = {
-//def processBtMessage(cmd:String, arg1:String, fromAddr:String, btMessage:BtShare.Message)(codedInputStream:CodedInputStream): Boolean = {
   def processBtMessage(cmd:String, arg1:String, fromAddr:String, btMessage:BtShare.Message)(readCodedInputStream:() => Array[Byte]): Boolean = {
-    // this method may be overloaded to implement app specific protocol extensions
+    // this method should be overloaded to implement app specific protocol extensions
+    Log.d(TAG, "processBtMessage() empty function to be overridden!!!!! SHOULD NEVER BE SHOWN!!!! -------------------------------")
     return false // return false if msg was not processed
   }
 
@@ -356,15 +349,13 @@ class RFCommMultiplexerService extends android.app.Service {
     directlyConnectedDevicesMap.foreach { case (remoteDevice, connectedThread) => 
       if(D) Log.i(TAG, "sendData remoteDevice.getAddress()="+remoteDevice.getAddress()+" connectedThread="+connectedThread)
       if(connectedThread!=null)
-        //if(toAddr==null || remoteDevice.getAddress().equals(toAddr)) {      // quatsch: toAddr can be a string with multiple bt-addr's
-          try {
-            if(D) Log.i(TAG, "sendData remoteDevice.getAddress()="+remoteDevice.getAddress()+" connectedThread="+connectedThread)   
-            connectedThread.writeData(size, data)
-          } catch {
-            case e: IOException =>
-              Log.e(TAG, "sendData exception during write", e)
-          }
-        //}
+        try {
+          if(D) Log.i(TAG, "sendData remoteDevice.getAddress()="+remoteDevice.getAddress()+" connectedThread="+connectedThread)   
+          connectedThread.writeData(size, data)
+        } catch {
+          case e: IOException =>
+            Log.e(TAG, "sendData exception during write", e)
+        }
     }
   }
 
@@ -656,7 +647,6 @@ class RFCommMultiplexerService extends android.app.Service {
 
       // Start the connected thread
       connected(mmSocket, remoteDevice, mSocketType)
-
       connectingCount-=1
     }
 
@@ -707,20 +697,6 @@ class RFCommMultiplexerService extends android.app.Service {
       }
     }
 
-/*
-    def readCodedInputStream() :Array[Byte] = {
-      if(D) Log.i(TAG, "ConnectedThread processReceivedRawData: processBtMessage closure...")
-      var size = codedInputStream.readInt32 // may block
-      if(D) Log.i(TAG, "ConnectedThread processReceivedRawData codedInputStream first size="+size)
-      if(size>0 /*&& running*/) {      // todo: must implement running-check
-        //if(D) Log.i(TAG, "ConnectedThread processReceivedRawData wait for "+size+" bytes data ...")
-        val rawdata = codedInputStream.readRawBytes(size)     // may be aborted by call to cancel
-        // TODO: forward data, if "NOT only for me", to other directly connected devices
-        return rawdata
-      }
-      return null
-    }
-*/
     private def splitString(line:String, delim:List[String]) :List[String] = delim match {
       case head :: tail => 
         val listBuffer = new ListBuffer[String]
@@ -786,6 +762,23 @@ class RFCommMultiplexerService extends android.app.Service {
         })
       }
 
+      val arg1 = btMessage.getArg1
+      val toName = btMessage.getToName
+
+      if(dataForMe && numberOfToAddr==1) {
+        // ONLY for me: don't forward
+        //if(D) Log.i(TAG, "ConnectedThread run - only for me, don't forward")
+      } else {
+        // NOT "only for me": forward obtained message to all devices in connectedDevicesSet except to fromAddr
+        // so that ALL data is ALWAYS received IDENTICALLY by ALL clients 
+        directlyConnectedDevicesMap.foreach { case (remoteDevice, connectedThread) => 
+          if(!remoteDevice.getAddress().equals(connectedBtAddr)) {    // prevent sending broadcasted data back to where it came from
+            if(D) Log.i(TAG, "ConnectedThread forward cmd="+cmd+" from="+fromAddr+" to="+remoteDevice.getAddress())
+            connectedThread.writeBtShareMessage(btMessage)
+          }
+        }
+      }
+
       if(!dataForMe) {
         // NOT for me: don't process
         if(D) Log.i(TAG, "ConnectedThread processReceivedRawData: NOT for me="+myBtAddr+", don't process - toAddr="+toAddr)
@@ -794,26 +787,43 @@ class RFCommMultiplexerService extends android.app.Service {
         // for me OR for all: do process
         if(D) Log.i(TAG, "ConnectedThread processReceivedRawData: read1 cmd="+cmd+" fromName="+fromName+" fromAddr="+fromAddr+" toAddr="+toAddr+" receivedSendMsgCounter="+receivedSendMsgCounter)
 
-        val toName = btMessage.getToName
-        val arg1 = btMessage.getArg1  // the text message
-        
-
         // plug-in app-specific behaviour
-//      if(!processBtMessage(cmd, arg1, fromAddr, btMessage)(codedInputStream)) {
         if(!processBtMessage(cmd, arg1, fromAddr, btMessage){
           () =>
-          if(D) Log.i(TAG, "ConnectedThread processReceivedRawData: processBtMessage closure...")
+          // this closure is used as readCodedInputStream() from within subclassed clients
+          if(D) Log.i(TAG, "ConnectedThread processReceivedRawData closure processBtMessage ...")
           var size = codedInputStream.readInt32 // may block
-          if(D) Log.i(TAG, "ConnectedThread processReceivedRawData codedInputStream first size="+size)
+          if(D) Log.i(TAG, "ConnectedThread processReceivedRawData closure codedInputStream first size="+size)
+          var rawdata:Array[Byte] = null
           if(size>0 /*&& running*/) {      // todo: must implement running-check
-            //if(D) Log.i(TAG, "ConnectedThread processReceivedRawData wait for "+size+" bytes data ...")
-            val rawdata = codedInputStream.readRawBytes(size)     // may be aborted by call to cancel
-            // TODO: forward data, if "NOT only for me", to other directly connected devices
-            return rawdata
+            if(D) Log.i(TAG, "ConnectedThread processReceivedRawData closure wait for "+size+" bytes data ...")
+            rawdata = codedInputStream.readRawBytes(size)     // may be aborted by call to cancel
+          }          
+
+          // forward data, if "NOT only for me", to other directly connected devices
+          if(dataForMe && numberOfToAddr==1) {
+            // ONLY for me: don't forward
+            //if(D) Log.i(TAG, "ConnectedThread run - only for me, don't forward")
+          } else {
+            // NOT "only for me": forward obtained message to all devices in connectedDevicesSet except to fromAddr
+            // so that ALL data is ALWAYS received IDENTICALLY by ALL clients 
+            directlyConnectedDevicesMap.foreach { case (remoteDevice, connectedThread) => 
+              if(!remoteDevice.getAddress().equals(connectedBtAddr)) {    // prevent sending broadcasted data back to where it came from
+                if(D) Log.i(TAG, "ConnectedThread processReceivedRawData closure forward cmd="+cmd+" from="+fromAddr+" to="+remoteDevice.getAddress())
+                connectedThread.writeData(size, rawdata)
+              }
+            }
           }
-          return null
+
+          if(size>0 /*&& running*/) {      // todo: must implement running-check
+            if(D) Log.i(TAG, "ConnectedThread processReceivedRawData closure return rawdata="+rawdata)
+            rawdata
+
+          } else {
+            if(D) Log.i(TAG, "ConnectedThread processReceivedRawData closure return null")
+            null
+          }
         }) {
-        
           // basic behaviour: ping, pong + strmsg
           if(D) Log.i(TAG, "ConnectedThread run: basic behaviour arg1="+arg1+" toName="+toName)
 
@@ -889,21 +899,6 @@ class RFCommMultiplexerService extends android.app.Service {
           }
         }
       }
-
-      if(dataForMe /*&& toAddr!=null && toAddr.length>0*/ && numberOfToAddr==1) {
-        // ONLY for me: don't forward
-        //if(D) Log.i(TAG, "ConnectedThread run - only for me, don't forward")
-      } else {
-        // NOT "only for me": forward obtained message to all devices in connectedDevicesSet except to fromAddr
-        // so that ALL data is ALWAYS received IDENTICALLY by ALL clients 
-        directlyConnectedDevicesMap.foreach { case (remoteDevice, connectedThread) => 
-          if(/*!remoteDevice.getAddress().equals(fromAddr) && */          // todo: not required?
-             !remoteDevice.getAddress().equals(connectedBtAddr)) {    // prevent sending broadcasted data back to where it came from
-            if(D) Log.i(TAG, "ConnectedThread forward cmd="+cmd+" from="+fromAddr+" to="+remoteDevice.getAddress())
-            connectedThread.writeBtShareMessage(btMessage)
-          }
-        }
-      }
     }
 
     override def run() {
@@ -935,29 +930,6 @@ class RFCommMultiplexerService extends android.app.Service {
 
       // todo: fifo queue btMessage - and actually send it from somewhere else
       sendQueue += btMessage
-/*
-      try {
-        val size = btMessage.getSerializedSize
-        if(D) Log.i(TAG, "writeBtShareMessage size="+size)
-        if(size>0) {
-          if(codedOutputStream!=null)
-            codedOutputStream synchronized {
-              if(codedOutputStream!=null)
-                codedOutputStream.writeInt32NoTag(size)
-              if(codedOutputStream!=null)
-                btMessage.writeTo(codedOutputStream)
-              if(codedOutputStream!=null)
-                codedOutputStream.flush()
-            }
-          if(D) Log.i(TAG, "writeBtShareMessage flushed size="+size)
-        }
-      } catch {
-        case e: IOException =>
-          Log.e(TAG, "writeBtShareMessage exception=", e)
-          sendToast("write exception "+e.getMessage())
-          // we actually receive: "java.io.IOException: Connection reset by peer"
-      }
-*/
     }
 
     /**
@@ -984,45 +956,27 @@ class RFCommMultiplexerService extends android.app.Service {
       writeBtShareMessage(btBuilder.build())
     }
 
-
     def writeData(size:Int, data:Array[Byte]) {
       if(D) Log.i(TAG, "ConnectedThread writeData size="+size)
-
-// todo out of memory issue
       // queue some part of the Array
-      var sendData:Array[Byte] = null
-      while(sendData==null) {
-        try {
-          sendData = new Array[Byte](size)
-        } catch {
-          case e: java.lang.OutOfMemoryError =>
-            if(D) Log.i(TAG, "ConnectedThread writeData OutOfMemoryError - force System.gc() ######################################################")
-            System.gc()
-            try { Thread.sleep(2000); } catch { case ex:Exception => }
-            System.gc()
-            if(D) Log.i(TAG, "ConnectedThread writeData OutOfMemoryError - continue ######################################################")
+      // take care of "out of memory" issues
+      var sendData = new Array[Byte](size)
+      if(size>0) {
+        while(sendData==null) {
+          try {
+            sendData = new Array[Byte](size)
+          } catch {
+            case e: java.lang.OutOfMemoryError =>
+              if(D) Log.i(TAG, "ConnectedThread writeData OutOfMemoryError - force System.gc() ######################################################")
+              System.gc()
+              try { Thread.sleep(2000); } catch { case ex:Exception => }
+              System.gc()
+              if(D) Log.i(TAG, "ConnectedThread writeData OutOfMemoryError - continue ######################################################")
+          }
         }
+        Array.copy(data,0,sendData,0,size)
       }
-      Array.copy(data,0,sendData,0,size)
       sendQueue += sendData
-
-/*
-      if(D) Log.i(TAG, "ConnectedThread writeData "+sendData.asInstanceOf[AnyRef].getClass.getSimpleName)
-      sendQueue += sendData
-
-      try {
-        codedOutputStream synchronized {
-          codedOutputStream.writeInt32NoTag(size)
-          if(size>0)
-            codedOutputStream.writeRawBytes(data,0,size)
-          codedOutputStream.flush()
-        }
-      } catch {
-        case e: IOException =>
-          Log.e(TAG, "writeData exception=", e)
-          sendToast("writeData "+e.getMessage())
-      }
-*/
     }
 
     def cancel() {
@@ -1132,14 +1086,12 @@ class RFCommMultiplexerService extends android.app.Service {
         //if(D) Log.i(TAG, "ConnectedSendThread writeBtShareMessage size="+size)
         if(size>0) {
           if(codedOutputStream!=null)
-            //codedOutputStream synchronized {
-              if(codedOutputStream!=null)
-                codedOutputStream.writeInt32NoTag(size)
-              if(codedOutputStream!=null)
-                btMessage.writeTo(codedOutputStream)
-              if(codedOutputStream!=null)
-                codedOutputStream.flush()
-            //}
+            if(codedOutputStream!=null)
+              codedOutputStream.writeInt32NoTag(size)
+            if(codedOutputStream!=null)
+              btMessage.writeTo(codedOutputStream)
+            if(codedOutputStream!=null)
+              codedOutputStream.flush()
           if(D) Log.i(TAG, "ConnectedSendThread writeBtShareMessage flushed size="+size+" codedOutputStream="+codedOutputStream)
         }
       } catch {
@@ -1157,12 +1109,10 @@ class RFCommMultiplexerService extends android.app.Service {
       //if(D) Log.i(TAG, "ConnectedSendThread writeData size="+size+" socket="+socket)
 
       try {
-        //codedOutputStream synchronized {
-          codedOutputStream.writeInt32NoTag(size)
-          if(size>0)
-            codedOutputStream.writeRawBytes(data,0,size)
-          codedOutputStream.flush()
-        //}
+        codedOutputStream.writeInt32NoTag(size)
+        if(size>0)
+          codedOutputStream.writeRawBytes(data,0,size)
+        codedOutputStream.flush()
       } catch {
         case e: IOException =>
           halt()
@@ -1173,5 +1123,4 @@ class RFCommMultiplexerService extends android.app.Service {
     }
   }
 }
-
 
