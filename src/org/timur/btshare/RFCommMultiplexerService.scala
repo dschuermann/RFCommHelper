@@ -39,6 +39,7 @@ import java.util.UUID
 import java.util.LinkedList
 import java.util.ArrayList
 
+import android.app.ActivityManager
 import android.util.Log
 import android.content.Context
 import android.content.Intent
@@ -74,12 +75,15 @@ object RFCommMultiplexerService {
   val CONNECTION_FAILED = 8
   val CONNECTION_START = 9
   val MESSAGE_REDRAW_DEVICEVIEW = 10
+  val MESSAGE_DELIVER_PROGRESS = 11
 
   // Key names received from RFCommMultiplexerService to the activity handler
   val DEVICE_NAME = "device_name"
   val DEVICE_ADDR = "device_addr"
   val SOCKET_TYPE = "socket_type"
   val TOAST = "toast"
+  val DELIVER_ID = "deliver_id"
+  val DELIVER_PROGRESS = "deliver_progress"
 } 
 
 class QueueMessage(createTimeMs:Long=0l, deviceAddr:String=null, deviceName:String=null, strmsg:String=null) {
@@ -115,7 +119,7 @@ class RFCommMultiplexerService extends android.app.Service {
 
   protected val queueMessageLinkedList = new LinkedList[QueueMessage]()
 
-  private val sendQueue = new scala.collection.mutable.Queue[Any]
+//  private val sendQueue = new scala.collection.mutable.Queue[Any]
 
 
   def getAllMsgsNewerThan(lastMsgTimeMillis:Long) :ArrayList[QueueMessage] = {
@@ -165,8 +169,9 @@ class RFCommMultiplexerService extends android.app.Service {
   val localBinder = new LocalBinder
   override def onBind(intent:Intent) :IBinder = localBinder 
 
-  def processBtMessage(cmd:String, arg1:String, fromAddr:String, btMessage:BtShare.Message, codedInputStream:CodedInputStream): Boolean = {
-    // this method may be overloaded to implement app specific protocol extensions
+  def processBtMessage(cmd:String, arg1:String, fromAddr:String, btMessage:BtShare.Message)(readCodedInputStream:() => Array[Byte]): Boolean = {
+    // this method should be overloaded to implement app specific protocol extensions
+    Log.d(TAG, "processBtMessage() empty function to be overridden!!!!! SHOULD NEVER BE SHOWN!!!! -------------------------------")
     return false // return false if msg was not processed
   }
 
@@ -342,14 +347,14 @@ class RFCommMultiplexerService extends android.app.Service {
   def sendData(size:Int, data:Array[Byte], toAddr:String) {
     //if(D) Log.i(TAG, "sendData size="+size+" toAddr="+toAddr)
     directlyConnectedDevicesMap.foreach { case (remoteDevice, connectedThread) => 
+      if(D) Log.i(TAG, "sendData remoteDevice.getAddress()="+remoteDevice.getAddress()+" connectedThread="+connectedThread)
       if(connectedThread!=null)
-        if(toAddr==null || remoteDevice.getAddress().equals(toAddr)) {
-          try {
-            connectedThread.writeData(size, data)
-          } catch {
-            case e: IOException =>
-              Log.e(TAG, "sendData exception during write", e)
-          }
+        try {
+          if(D) Log.i(TAG, "sendData remoteDevice.getAddress()="+remoteDevice.getAddress()+" connectedThread="+connectedThread)   
+          connectedThread.writeData(size, data)
+        } catch {
+          case e: IOException =>
+            Log.e(TAG, "sendData exception during write", e)
         }
     }
   }
@@ -642,7 +647,6 @@ class RFCommMultiplexerService extends android.app.Service {
 
       // Start the connected thread
       connected(mmSocket, remoteDevice, mSocketType)
-
       connectingCount-=1
     }
 
@@ -656,13 +660,14 @@ class RFCommMultiplexerService extends android.app.Service {
     }
   }
 
-  class ConnectedThread(socket: BluetoothSocket, socketType: String) extends Thread {
+  class ConnectedThread(socket:BluetoothSocket, socketType:String) extends Thread {
     if(D) Log.i(TAG, "ConnectedThread start " + socketType)
     private var mmInStream: InputStream = null
     private var codedInputStream: CodedInputStream = null
     private var mmOutStream: OutputStream = null
     //private var codedOutputStream: CodedOutputStream = null
     private var mConnectedSendThread: ConnectedSendThread = null
+    private val sendQueue = new scala.collection.mutable.Queue[Any]
 
     var connectedBluetoothDevice:BluetoothDevice = null
     var connectedBtAddr:String = null
@@ -683,7 +688,7 @@ class RFCommMultiplexerService extends android.app.Service {
         mmOutStream = socket.getOutputStream()
         //codedOutputStream =  CodedOutputStream.newInstance(mmOutStream)
         // todo: start fifo queue delivery via codedOutputStream
-        mConnectedSendThread = new ConnectedSendThread(CodedOutputStream.newInstance(mmOutStream))
+        mConnectedSendThread = new ConnectedSendThread(sendQueue,CodedOutputStream.newInstance(mmOutStream),socket)
         mConnectedSendThread.start()
 
       } catch {
@@ -708,16 +713,16 @@ class RFCommMultiplexerService extends android.app.Service {
 
     private def processReceivedRawData(rawdata:Array[Byte]) :Unit = synchronized {
       val btMessage = BtShare.Message.parseFrom(rawdata)
-      val cmd = btMessage.getCommand()
-      val toAddr = btMessage.getToAddr()
-      val fromAddr = btMessage.getFromAddr()
-      val fromName = btMessage.getFromName()
-      val receivedSendMsgCounter = btMessage.getArgCount()
+      val cmd = btMessage.getCommand
+      val toAddr = btMessage.getToAddr
+      val fromAddr = btMessage.getFromAddr
+      val fromName = btMessage.getFromName
+      val receivedSendMsgCounter = btMessage.getArgCount
       val lastSendMsgCounter = sendMsgCounterMap get fromAddr
 
       // ignore double delivery
       if(lastSendMsgCounter!=None && receivedSendMsgCounter <= lastSendMsgCounter.get) {
-        if(D) Log.i(TAG, "ConnectedThread run ignore msg cmd="+cmd+" counter="+receivedSendMsgCounter+" <= "+lastSendMsgCounter.get+" fromName="+fromName+" fromAddr="+fromAddr+" double delivery")
+        if(D) Log.i(TAG, "ConnectedThread processReceivedRawData ignore msg cmd="+cmd+" counter="+receivedSendMsgCounter+" <= "+lastSendMsgCounter.get+" fromName="+fromName+" fromAddr="+fromAddr+" double delivery")
         return
       }
 
@@ -729,7 +734,7 @@ class RFCommMultiplexerService extends android.app.Service {
       if(!isDirectlyConnectedDevices(fromAddr)) {
         val previouslyFound = indirectlyConnectedDevicesMap get fromAddr
         indirectlyConnectedDevicesMap += fromAddr -> new IndirectDeviceObject(fromName, System.currentTimeMillis())  // todo: missing info: connected via btAddr
-        if(D) Log.i(TAG, "ConnectedThread run: added indirectlyConnectedDevice fromName="+fromName+" fromAddr="+fromAddr)
+        if(D) Log.i(TAG, "ConnectedThread processReceivedRawData: added indirectlyConnectedDevice fromName="+fromName+" fromAddr="+fromAddr)
 
         previouslyFound match {
           case None => 
@@ -749,7 +754,7 @@ class RFCommMultiplexerService extends android.app.Service {
         dataForMe = false
         // check if myBtAddr is part of targetList
         val targetList = splitString(toAddr,List(","))
-        //if(D) Log.i(TAG, "ConnectedThread run: targetList.size="+targetList.size)
+        //if(D) Log.i(TAG, "ConnectedThread processReceivedRawData: targetList.size="+targetList.size)
         //targetList.foreach(addr => if(D) Log.i(TAG, "ConnectedThread run: foreach "+addr+" contained="+myBtAddr.contains(addr)) )
         targetList.foreach(addr => if(myBtAddr.contains(addr)) {
           dataForMe = true
@@ -757,20 +762,68 @@ class RFCommMultiplexerService extends android.app.Service {
         })
       }
 
+      val arg1 = btMessage.getArg1
+      val toName = btMessage.getToName
+
+      if(dataForMe && numberOfToAddr==1) {
+        // ONLY for me: don't forward
+        //if(D) Log.i(TAG, "ConnectedThread run - only for me, don't forward")
+      } else {
+        // NOT "only for me": forward obtained message to all devices in connectedDevicesSet except to fromAddr
+        // so that ALL data is ALWAYS received IDENTICALLY by ALL clients 
+        directlyConnectedDevicesMap.foreach { case (remoteDevice, connectedThread) => 
+          if(!remoteDevice.getAddress().equals(connectedBtAddr)) {    // prevent sending broadcasted data back to where it came from
+            if(D) Log.i(TAG, "ConnectedThread forward cmd="+cmd+" from="+fromAddr+" to="+remoteDevice.getAddress())
+            connectedThread.writeBtShareMessage(btMessage)
+          }
+        }
+      }
+
       if(!dataForMe) {
         // NOT for me: don't process
-        if(D) Log.i(TAG, "ConnectedThread run: NOT for me="+myBtAddr+", don't process - toAddr="+toAddr)
+        if(D) Log.i(TAG, "ConnectedThread processReceivedRawData: NOT for me="+myBtAddr+", don't process - toAddr="+toAddr)
 
       } else {
         // for me OR for all: do process
-        if(D) Log.i(TAG, "ConnectedThread run: read1 cmd="+cmd+" fromName="+fromName+" fromAddr="+fromAddr+" toAddr="+toAddr+" receivedSendMsgCounter="+receivedSendMsgCounter)
-
-        val toName = btMessage.getToName()
-        val arg1 = btMessage.getArg1()  // the text message
+        if(D) Log.i(TAG, "ConnectedThread processReceivedRawData: read1 cmd="+cmd+" fromName="+fromName+" fromAddr="+fromAddr+" toAddr="+toAddr+" receivedSendMsgCounter="+receivedSendMsgCounter)
 
         // plug-in app-specific behaviour
-        if(!processBtMessage(cmd, arg1, fromAddr, btMessage, codedInputStream)) {
+        if(!processBtMessage(cmd, arg1, fromAddr, btMessage){
+          () =>
+          // this closure is used as readCodedInputStream() from within subclassed clients
+          if(D) Log.i(TAG, "ConnectedThread processReceivedRawData closure processBtMessage ...")
+          var size = codedInputStream.readInt32 // may block
+          if(D) Log.i(TAG, "ConnectedThread processReceivedRawData closure codedInputStream first size="+size)
+          var rawdata:Array[Byte] = null
+          if(size>0 /*&& running*/) {      // todo: must implement running-check
+            if(D) Log.i(TAG, "ConnectedThread processReceivedRawData closure wait for "+size+" bytes data ...")
+            rawdata = codedInputStream.readRawBytes(size)     // may be aborted by call to cancel
+          }          
 
+          // forward data, if "NOT only for me", to other directly connected devices
+          if(dataForMe && numberOfToAddr==1) {
+            // ONLY for me: don't forward
+            //if(D) Log.i(TAG, "ConnectedThread run - only for me, don't forward")
+          } else {
+            // NOT "only for me": forward obtained message to all devices in connectedDevicesSet except to fromAddr
+            // so that ALL data is ALWAYS received IDENTICALLY by ALL clients 
+            directlyConnectedDevicesMap.foreach { case (remoteDevice, connectedThread) => 
+              if(!remoteDevice.getAddress().equals(connectedBtAddr)) {    // prevent sending broadcasted data back to where it came from
+                if(D) Log.i(TAG, "ConnectedThread processReceivedRawData closure forward cmd="+cmd+" from="+fromAddr+" to="+remoteDevice.getAddress())
+                connectedThread.writeData(size, rawdata)
+              }
+            }
+          }
+
+          if(size>0 /*&& running*/) {      // todo: must implement running-check
+            if(D) Log.i(TAG, "ConnectedThread processReceivedRawData closure return rawdata="+rawdata)
+            rawdata
+
+          } else {
+            if(D) Log.i(TAG, "ConnectedThread processReceivedRawData closure return null")
+            null
+          }
+        }) {
           // basic behaviour: ping, pong + strmsg
           if(D) Log.i(TAG, "ConnectedThread run: basic behaviour arg1="+arg1+" toName="+toName)
 
@@ -786,7 +839,7 @@ class RFCommMultiplexerService extends android.app.Service {
                 sendMsgCounter=nowMs
               thisSendMsgCounter = sendMsgCounter
             }
-            writeCmdMsg("pong", btMessage.getArg1(), fromAddr, thisSendMsgCounter)
+            writeCmdMsg("pong", btMessage.getArg1, fromAddr, thisSendMsgCounter)
 
           } else if(cmd.equals("pong")) {
             val sendMs = new java.lang.Integer(arg1).intValue()
@@ -846,21 +899,6 @@ class RFCommMultiplexerService extends android.app.Service {
           }
         }
       }
-
-      if(dataForMe /*&& toAddr!=null && toAddr.length>0*/ && numberOfToAddr==1) {
-        // ONLY for me: don't forward
-        //if(D) Log.i(TAG, "ConnectedThread run - only for me, don't forward")
-      } else {
-        // NOT only for me: forward obtained message to all devices in connectedDevicesSet except to fromAddr
-        // so that ALL data is ALWAYS received IDENTICALLY by ALL clients 
-        directlyConnectedDevicesMap.foreach { case (remoteDevice, connectedThread) => 
-          if(!remoteDevice.getAddress().equals(fromAddr) &&           // todo: not required?
-             !remoteDevice.getAddress().equals(connectedBtAddr)) {    // prevent sending broadcasted data back to where it came from
-            if(D) Log.i(TAG, "ConnectedThread forward cmd="+cmd+" from="+fromAddr+" to="+remoteDevice.getAddress())
-            connectedThread.writeBtShareMessage(btMessage)
-          }
-        }
-      }
     }
 
     override def run() {
@@ -887,34 +925,11 @@ class RFCommMultiplexerService extends android.app.Service {
     }
 
     def writeBtShareMessage(btMessage:BtShare.Message) :Unit = {
-      if(D) Log.i(TAG, "writeBtShareMessage btMessage="+btMessage)
+      if(D) Log.i(TAG, "ConnectedThread writeBtShareMessage btMessage="+btMessage)
       if(btMessage==null) return
 
       // todo: fifo queue btMessage - and actually send it from somewhere else
       sendQueue += btMessage
-/*
-      try {
-        val size = btMessage.getSerializedSize()
-        if(D) Log.i(TAG, "writeBtShareMessage size="+size)
-        if(size>0) {
-          if(codedOutputStream!=null)
-            codedOutputStream synchronized {
-              if(codedOutputStream!=null)
-                codedOutputStream.writeInt32NoTag(size)
-              if(codedOutputStream!=null)
-                btMessage.writeTo(codedOutputStream)
-              if(codedOutputStream!=null)
-                codedOutputStream.flush()
-            }
-          if(D) Log.i(TAG, "writeBtShareMessage flushed size="+size)
-        }
-      } catch {
-        case e: IOException =>
-          Log.e(TAG, "writeBtShareMessage exception=", e)
-          sendToast("write exception "+e.getMessage())
-          // we actually receive: "java.io.IOException: Connection reset by peer"
-      }
-*/
     }
 
     /**
@@ -922,7 +937,7 @@ class RFCommMultiplexerService extends android.app.Service {
      * @param message  The string to write
      */
     def writeCmdMsg(cmd:String, message:String, toAddr:String, sendMsgCounter:Long) = synchronized {
-      if(D) Log.i(TAG, "writeCmdMsg cmd="+cmd+" message="+message+" toAddr="+toAddr+" myBtName="+myBtName+" myBtAddr="+myBtAddr)
+      if(D) Log.i(TAG, "writeCmdMsg cmd="+cmd+" message="+message+" socket="+socket) //+" toAddr="+toAddr+" myBtName="+myBtName+" myBtAddr="+myBtAddr)
       val btBuilder = BtShare.Message.newBuilder()
                                      .setArgCount(sendMsgCounter)
                                      .setFromName(myBtName)
@@ -943,40 +958,25 @@ class RFCommMultiplexerService extends android.app.Service {
 
     def writeData(size:Int, data:Array[Byte]) {
       if(D) Log.i(TAG, "ConnectedThread writeData size="+size)
-
-// todo out of memory issue
       // queue some part of the Array
-      var sendData:Array[Byte] = null
-      while(sendData==null) {
-        try {
-          sendData = new Array[Byte](size)
-        } catch {
-          case e: java.lang.OutOfMemoryError =>
-            if(D) Log.i(TAG, "ConnectedThread writeData OutOfMemoryError - force System.gc() ...")
-            try { Thread.sleep(500); } catch { case ex:Exception => }
-            System.gc()
+      // take care of "out of memory" issues
+      var sendData = new Array[Byte](size)
+      if(size>0) {
+        while(sendData==null) {
+          try {
+            sendData = new Array[Byte](size)
+          } catch {
+            case e: java.lang.OutOfMemoryError =>
+              if(D) Log.i(TAG, "ConnectedThread writeData OutOfMemoryError - force System.gc() ######################################################")
+              System.gc()
+              try { Thread.sleep(2000); } catch { case ex:Exception => }
+              System.gc()
+              if(D) Log.i(TAG, "ConnectedThread writeData OutOfMemoryError - continue ######################################################")
+          }
         }
+        Array.copy(data,0,sendData,0,size)
       }
-      Array.copy(data,0,sendData,0,size)
       sendQueue += sendData
-
-/*
-      if(D) Log.i(TAG, "ConnectedThread writeData "+sendData.asInstanceOf[AnyRef].getClass.getSimpleName)
-      sendQueue += sendData
-
-      try {
-        codedOutputStream synchronized {
-          codedOutputStream.writeInt32NoTag(size)
-          if(size>0)
-            codedOutputStream.writeRawBytes(data,0,size)
-          codedOutputStream.flush()
-        }
-      } catch {
-        case e: IOException =>
-          Log.e(TAG, "writeData exception=", e)
-          sendToast("writeData "+e.getMessage())
-      }
-*/
     }
 
     def cancel() {
@@ -1002,9 +1002,16 @@ class RFCommMultiplexerService extends android.app.Service {
   }
 
 
-  class ConnectedSendThread(var codedOutputStream:CodedOutputStream) extends Thread {
+  class ConnectedSendThread(sendQueue:scala.collection.mutable.Queue[Any], var codedOutputStream:CodedOutputStream, socket:BluetoothSocket) extends Thread {
     if(D) Log.i(TAG, "ConnectedSendThread start")
     var running = false
+    var totalSend = 0
+    var blobId:Long = 0
+    var contentLength:Long = 0
+    var progressLastStep:Long = 0
+    
+    val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE).asInstanceOf[ActivityManager]
+    val memoryInfo = new ActivityManager.MemoryInfo()
 
     override def run() {
       if(D) Log.i(TAG, "ConnectedSendThread run ")
@@ -1014,13 +1021,45 @@ class RFCommMultiplexerService extends android.app.Service {
             val obj = sendQueue.dequeue
             if(obj.isInstanceOf[BtShare.Message]) {
               if(D) Log.i(TAG, "ConnectedSendThread run BtShare.Message")
-              writeBtShareMessage(obj.asInstanceOf[BtShare.Message])
+              val btShareMessage = obj.asInstanceOf[BtShare.Message]
+              writeBtShareMessage(btShareMessage)
               // a new blob delivery is starting...
+              totalSend = 0
+              blobId = btShareMessage.getId
+              contentLength = btShareMessage.getDataLength
+              progressLastStep = 0
             } else {
               val data = obj.asInstanceOf[Array[Byte]]
-              if(D) Log.i(TAG, "ConnectedSendThread run Array[Byte] size="+data.size)
+
+              activityManager.getMemoryInfo(memoryInfo)
+              if(D) Log.i(TAG, "ConnectedSendThread run size="+data.size+" totalSend="+totalSend+" progressLastStep+contentLength/5="+(progressLastStep+contentLength/5)+" contentLength="+contentLength +" ######################")
+
               writeData(data.size, data)
               // a new blob delivery is in progress... (if data.size==0 then this is the end of this blob delivery)
+              totalSend += data.size
+              
+              // todo: if data.size == 0, message back "blobId finished" to activity
+              // todo: else if contentLength > 0, message back "percentage progress" to activity
+              if(data.size == 0) {
+                val msg = activityMsgHandler.obtainMessage(RFCommMultiplexerService.MESSAGE_DELIVER_PROGRESS)
+                val bundle = new Bundle()
+                bundle.putLong(RFCommMultiplexerService.DELIVER_ID, blobId)
+                bundle.putInt(RFCommMultiplexerService.DELIVER_PROGRESS, 100)
+                msg.setData(bundle)
+                activityMsgHandler.sendMessage(msg)
+              } 
+
+              else
+              if(contentLength>0 && totalSend>progressLastStep+contentLength/20) {
+                progressLastStep += contentLength/20  // 5% steps seems ideal for progress bar
+
+                val msg = activityMsgHandler.obtainMessage(RFCommMultiplexerService.MESSAGE_DELIVER_PROGRESS)
+                val bundle = new Bundle()
+                bundle.putLong(RFCommMultiplexerService.DELIVER_ID, blobId)
+                bundle.putInt(RFCommMultiplexerService.DELIVER_PROGRESS, (progressLastStep/(contentLength/100)).asInstanceOf[Int] )
+                msg.setData(bundle)
+                activityMsgHandler.sendMessage(msg)
+              }
             }
           } else {
             try { Thread.sleep(200); } catch { case ex:Exception => }
@@ -1028,61 +1067,60 @@ class RFCommMultiplexerService extends android.app.Service {
         }
       } catch {
         case e: IOException =>
-          if(D) Log.i(TAG, "ConnectedSendThread run ex="+e)
-          //connectionLost(socket)
-          // todo!
+          if(D) Log.i(TAG, "ConnectedSendThread socket="+socket+" run ex="+e)
+          connectionLost(socket)
       }
-      if(D) Log.i(TAG, "ConnectedSendThread run DONE")
+      if(D) Log.i(TAG, "ConnectedSendThread run DONE ###################################################")
     }
 
     def halt() {
       codedOutputStream=null
     }
 
-    private def writeBtShareMessage(btMessage:BtShare.Message) :Unit = {
-      if(D) Log.i(TAG, "ConnectedSendThread writeBtShareMessage btMessage="+btMessage)
+    private def writeBtShareMessage(btMessage:BtShare.Message) :Unit = synchronized {
+      if(D) Log.i(TAG, "ConnectedSendThread writeBtShareMessage btMessage="+btMessage+" socket="+socket)
       if(btMessage==null) return
 
       try {
-        val size = btMessage.getSerializedSize()
-        if(D) Log.i(TAG, "ConnectedSendThread writeBtShareMessage size="+size)
+        val size = btMessage.getSerializedSize
+        //if(D) Log.i(TAG, "ConnectedSendThread writeBtShareMessage size="+size)
         if(size>0) {
           if(codedOutputStream!=null)
-            codedOutputStream synchronized {
-              if(codedOutputStream!=null)
-                codedOutputStream.writeInt32NoTag(size)
-              if(codedOutputStream!=null)
-                btMessage.writeTo(codedOutputStream)
-              if(codedOutputStream!=null)
-                codedOutputStream.flush()
-            }
-          if(D) Log.i(TAG, "ConnectedSendThread writeBtShareMessage flushed size="+size)
+            if(codedOutputStream!=null)
+              codedOutputStream.writeInt32NoTag(size)
+            if(codedOutputStream!=null)
+              btMessage.writeTo(codedOutputStream)
+            if(codedOutputStream!=null)
+              codedOutputStream.flush()
+          if(D) Log.i(TAG, "ConnectedSendThread writeBtShareMessage flushed size="+size+" codedOutputStream="+codedOutputStream)
         }
       } catch {
-        case e: IOException =>
-          Log.e(TAG, "ConnectedSendThread writeBtShareMessage exception=", e)
-          sendToast("ConnectedSendThread write exception "+e.getMessage())
-          // we actually receive: "java.io.IOException: Connection reset by peer"
+        case ex: IOException =>
+          Log.e(TAG, "ConnectedSendThread writeBtShareMessage socket="+socket+" ioexception", ex)
+          sendToast("ConnectedSendThread write exception "+ex.getMessage())
+          // we receive: "java.io.IOException: Connection reset by peer"
+          // or:         "java.io.IOException: Transport endpoint is not connected"
+          halt()
+          connectionLost(socket)
       }
     }
 
-    private def writeData(size:Int, data:Array[Byte]) {
-      if(D) Log.i(TAG, "ConnectedSendThread writeData size="+size)
+    private def writeData(size:Int, data:Array[Byte]) = synchronized {
+      //if(D) Log.i(TAG, "ConnectedSendThread writeData size="+size+" socket="+socket)
 
       try {
-        codedOutputStream synchronized {
-          codedOutputStream.writeInt32NoTag(size)
-          if(size>0)
-            codedOutputStream.writeRawBytes(data,0,size)
-          codedOutputStream.flush()
-        }
+        codedOutputStream.writeInt32NoTag(size)
+        if(size>0)
+          codedOutputStream.writeRawBytes(data,0,size)
+        codedOutputStream.flush()
       } catch {
         case e: IOException =>
-          Log.e(TAG, "ConnectedSendThread writeData exception=", e)
+          halt()
+          connectionLost(socket)
+          Log.e(TAG, "ConnectedSendThread writeData socket="+socket+" exception=", e)
           sendToast("ConnectedSendThread writeData "+e.getMessage())
       }
     }
   }
 }
-
 

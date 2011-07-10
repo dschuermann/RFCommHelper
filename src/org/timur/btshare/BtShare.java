@@ -53,6 +53,20 @@ public final class BtShare {
     public boolean hasArgCount() { return hasArgCount; }
     public long getArgCount() { return argCount_; }
     
+    // optional int64 id = 8;
+    public static final int ID_FIELD_NUMBER = 8;
+    private boolean hasId;
+    private long id_ = 0L;
+    public boolean hasId() { return hasId; }
+    public long getId() { return id_; }
+    
+    // optional int64 dataLength = 9;
+    public static final int DATALENGTH_FIELD_NUMBER = 9;
+    private boolean hasDataLength;
+    private long dataLength_ = 0L;
+    public boolean hasDataLength() { return hasDataLength; }
+    public long getDataLength() { return dataLength_; }
+    
     // optional string arg1 = 3;
     public static final int ARG1_FIELD_NUMBER = 3;
     private boolean hasArg1;
@@ -136,6 +150,12 @@ public final class BtShare {
       if (hasArgBytes()) {
         output.writeBytes(7, getArgBytes());
       }
+      if (hasId()) {
+        output.writeInt64(8, getId());
+      }
+      if (hasDataLength()) {
+        output.writeInt64(9, getDataLength());
+      }
       if (hasFromName()) {
         output.writeString(20, getFromName());
       }
@@ -183,6 +203,14 @@ public final class BtShare {
       if (hasArgBytes()) {
         size += com.google.protobuf.CodedOutputStream
           .computeBytesSize(7, getArgBytes());
+      }
+      if (hasId()) {
+        size += com.google.protobuf.CodedOutputStream
+          .computeInt64Size(8, getId());
+      }
+      if (hasDataLength()) {
+        size += com.google.protobuf.CodedOutputStream
+          .computeInt64Size(9, getDataLength());
       }
       if (hasFromName()) {
         size += com.google.protobuf.CodedOutputStream
@@ -356,6 +384,12 @@ public final class BtShare {
         if (other.hasArgCount()) {
           setArgCount(other.getArgCount());
         }
+        if (other.hasId()) {
+          setId(other.getId());
+        }
+        if (other.hasDataLength()) {
+          setDataLength(other.getDataLength());
+        }
         if (other.hasArg1()) {
           setArg1(other.getArg1());
         }
@@ -421,6 +455,14 @@ public final class BtShare {
             }
             case 58: {
               setArgBytes(input.readBytes());
+              break;
+            }
+            case 64: {
+              setId(input.readInt64());
+              break;
+            }
+            case 72: {
+              setDataLength(input.readInt64());
               break;
             }
             case 162: {
@@ -522,6 +564,42 @@ public final class BtShare {
       public Builder clearArgCount() {
         result.hasArgCount = false;
         result.argCount_ = 0L;
+        return this;
+      }
+      
+      // optional int64 id = 8;
+      public boolean hasId() {
+        return result.hasId();
+      }
+      public long getId() {
+        return result.getId();
+      }
+      public Builder setId(long value) {
+        result.hasId = true;
+        result.id_ = value;
+        return this;
+      }
+      public Builder clearId() {
+        result.hasId = false;
+        result.id_ = 0L;
+        return this;
+      }
+      
+      // optional int64 dataLength = 9;
+      public boolean hasDataLength() {
+        return result.hasDataLength();
+      }
+      public long getDataLength() {
+        return result.getDataLength();
+      }
+      public Builder setDataLength(long value) {
+        result.hasDataLength = true;
+        result.dataLength_ = value;
+        return this;
+      }
+      public Builder clearDataLength() {
+        result.hasDataLength = false;
+        result.dataLength_ = 0L;
         return this;
       }
       
