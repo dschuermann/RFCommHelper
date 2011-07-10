@@ -339,7 +339,7 @@ class RFCommMultiplexerService extends android.app.Service {
     }
   }
 
-  def sendData(size:Int, data: Array[Byte], toAddr:String) {
+  def sendData(size:Int, data:Array[Byte], toAddr:String) {
     //if(D) Log.i(TAG, "sendData size="+size+" toAddr="+toAddr)
     directlyConnectedDevicesMap.foreach { case (remoteDevice, connectedThread) => 
       if(connectedThread!=null)
@@ -944,19 +944,21 @@ class RFCommMultiplexerService extends android.app.Service {
     def writeData(size:Int, data:Array[Byte]) {
       if(D) Log.i(TAG, "ConnectedThread writeData size="+size)
 
-/*
-      if(size<data.size) {
-*/
-        // queue some part of the Array
-        var sendData = new Array[Byte](size)
-        Array.copy(data,0,sendData,0,size)
-        sendQueue += sendData
-/*
-      } else {
-        // queue the complete Array
-        sendQueue += data
+// todo out of memory issue
+      // queue some part of the Array
+      var sendData:Array[Byte] = null
+      while(sendData==null) {
+        try {
+          sendData = new Array[Byte](size)
+        } catch {
+          case e: java.lang.OutOfMemoryError =>
+            if(D) Log.i(TAG, "ConnectedThread writeData OutOfMemoryError - force System.gc() ...")
+            try { Thread.sleep(500); } catch { case ex:Exception => }
+            System.gc()
+        }
       }
-*/
+      Array.copy(data,0,sendData,0,size)
+      sendQueue += sendData
 
 /*
       if(D) Log.i(TAG, "ConnectedThread writeData "+sendData.asInstanceOf[AnyRef].getClass.getSimpleName)
@@ -990,7 +992,6 @@ class RFCommMultiplexerService extends android.app.Service {
       }
 
       codedInputStream = null
-      //codedOutputStream = null
       mConnectedSendThread.halt()
 
       if(socket != null) {
@@ -1014,16 +1015,13 @@ class RFCommMultiplexerService extends android.app.Service {
             if(obj.isInstanceOf[BtShare.Message]) {
               if(D) Log.i(TAG, "ConnectedSendThread run BtShare.Message")
               writeBtShareMessage(obj.asInstanceOf[BtShare.Message])
+              // a new blob delivery is starting...
             } else {
-            //if(obj.isInstanceOf[Array[Byte]]) {
               val data = obj.asInstanceOf[Array[Byte]]
               if(D) Log.i(TAG, "ConnectedSendThread run Array[Byte] size="+data.size)
               writeData(data.size, data)
-            } /* else {
-              try {
-                if(D) Log.i(TAG, "ConnectedSendThread run dequeue-problem1 "+obj.asInstanceOf[AnyRef].getClass.getSimpleName)
-              } catch { case ex:Exception => }
-            }*/
+              // a new blob delivery is in progress... (if data.size==0 then this is the end of this blob delivery)
+            }
           } else {
             try { Thread.sleep(200); } catch { case ex:Exception => }
           }
