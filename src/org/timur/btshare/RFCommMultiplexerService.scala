@@ -370,7 +370,7 @@ class RFCommMultiplexerService extends android.app.Service {
   // private methods
 
   protected def setState(state: Int) = synchronized {
-    if(D) Log.i(TAG, "setState() " + mState + " -> " + state)
+    //if(D) Log.i(TAG, "setState() " + mState + " -> " + state)
     mState = state
     // Give the new state to the Handler so the UI Activity can update
     activityMsgHandler.obtainMessage(RFCommMultiplexerService.MESSAGE_STATE_CHANGE, state, -1).sendToTarget()
@@ -494,7 +494,7 @@ class RFCommMultiplexerService extends android.app.Service {
           }
         }
 
-        //if(D) Log.i(TAG, "ConnectedThread run: strmsg added queueMessageLinkedList.size()="+queueMessageLinkedList.size())
+        //if(D) Log.i(TAG, "ConnectedThread run strmsg added queueMessageLinkedList.size()="+queueMessageLinkedList.size())
       }
     }
 
@@ -602,15 +602,20 @@ class RFCommMultiplexerService extends android.app.Service {
       }
     } catch {
       case e: IOException =>
-        Log.e(TAG, "Socket Type: " + mSocketType + "create() failed", e)
+        Log.e(TAG, "ConnectThread Socket Type: " + mSocketType + "create() failed", e)
     }
 
     override def run() {
-      if(D) Log.i(TAG, "ConnectThread() run SocketType="+mSocketType)
+      if(D) Log.i(TAG, "ConnectThread run SocketType="+mSocketType)
       setName("ConnectThread" + mSocketType)
 
       // Always cancel discovery because it will slow down a connection
-      mAdapter.cancelDiscovery()
+      if(mAdapter.isDiscovering) {
+        Log.e(TAG, "ConnectThread run isDiscovering -> cancelDiscovery() ###########################")
+        mAdapter.cancelDiscovery()
+      } else {
+        Log.e(TAG, "ConnectThread run NOT isDiscovering ###########################")
+      }
 
       // Make a connection to the BluetoothSocket
       try {
@@ -619,16 +624,16 @@ class RFCommMultiplexerService extends android.app.Service {
         mmSocket.connect()
       } catch {
         case e: IOException =>
+          Log.e(TAG, "ConnectThread run unable to connect() "+mSocketType+" ex=",e)
           // Close the socket
           try {
             mmSocket.close()
           } catch {
             case e2: IOException =>
-              Log.e(TAG, "unable to close() " + mSocketType + " socket during connection failure", e2)
+              Log.e(TAG, "ConnectThread run unable to close() "+mSocketType+" socket during connection failure",e2)
           } finally {
             connectingCount-=1
             if(reportConnectState) {
-              // need to tell the activity that the connection has failed - and that the connect-animation/busy-image can be disabled/made invisible
               val msg = activityMsgHandler.obtainMessage(RFCommMultiplexerService.CONNECTION_FAILED)
               val bundle = new Bundle()
               bundle.putString(RFCommMultiplexerService.DEVICE_ADDR, remoteDevice.getAddress())
@@ -655,7 +660,7 @@ class RFCommMultiplexerService extends android.app.Service {
         mmSocket.close()
       } catch {
         case e: IOException =>
-          Log.e(TAG, "close() of connect " + mSocketType + " socket failed", e)
+          Log.e(TAG, "ConnectThread cancel socket.close() failed for " + mSocketType + " socket", e)
       }
     }
   }
@@ -700,12 +705,12 @@ class RFCommMultiplexerService extends android.app.Service {
     private def splitString(line:String, delim:List[String]) :List[String] = delim match {
       case head :: tail => 
         val listBuffer = new ListBuffer[String]
-        //if(D) Log.i(TAG, "ConnectedThread run: splitString line="+line)
+        //if(D) Log.i(TAG, "ConnectedThread run splitString line="+line)
         for(addr <- line.split(head).toList) {
           listBuffer += addr
-          //if(D) Log.i(TAG, "ConnectedThread run: splitString addr="+addr+" listBuffer.size="+listBuffer.size)
+          //if(D) Log.i(TAG, "ConnectedThread run splitString addr="+addr+" listBuffer.size="+listBuffer.size)
         }
-        //if(D) Log.i(TAG, "ConnectedThread run: splitString listBuffer.size="+listBuffer.size)
+        //if(D) Log.i(TAG, "ConnectedThread run splitString listBuffer.size="+listBuffer.size)
         return listBuffer.toList
       case Nil => 
         return List(line.trim)
@@ -755,7 +760,7 @@ class RFCommMultiplexerService extends android.app.Service {
         // check if myBtAddr is part of targetList
         val targetList = splitString(toAddr,List(","))
         //if(D) Log.i(TAG, "ConnectedThread processReceivedRawData: targetList.size="+targetList.size)
-        //targetList.foreach(addr => if(D) Log.i(TAG, "ConnectedThread run: foreach "+addr+" contained="+myBtAddr.contains(addr)) )
+        //targetList.foreach(addr => if(D) Log.i(TAG, "ConnectedThread run foreach "+addr+" contained="+myBtAddr.contains(addr)) )
         targetList.foreach(addr => if(myBtAddr.contains(addr)) {
           dataForMe = true
           numberOfToAddr = targetList.size
@@ -825,7 +830,7 @@ class RFCommMultiplexerService extends android.app.Service {
           }
         }) {
           // basic behaviour: ping, pong + strmsg
-          if(D) Log.i(TAG, "ConnectedThread run: basic behaviour arg1="+arg1+" toName="+toName)
+          if(D) Log.i(TAG, "ConnectedThread run basic behaviour arg1="+arg1+" toName="+toName)
 
           if(cmd.equals("ping")) {
 
@@ -850,11 +855,11 @@ class RFCommMultiplexerService extends android.app.Service {
           } else if(cmd.equals("disconnect")) {
             // note: this can be wrong info, if the "disconencted" device is still connected via another device
             val disconnectDeviceAddr = arg1  // btAddr of device that disconnected
-            if(D) Log.i(TAG, "ConnectedThread run: disconnect disconnectDeviceAddr="+disconnectDeviceAddr+" ############################")
+            if(D) Log.i(TAG, "ConnectedThread run disconnect disconnectDeviceAddr="+disconnectDeviceAddr+" ############################")
             if(disconnectDeviceAddr.equals(myBtAddr)) {
               // another device has bt-broadcasted that this device has disconnected, but we are still alive
               // bt-broadcast a "pong" so that everyone know we are still 
-              if(D) Log.i(TAG, "ConnectedThread run: disconnect disconnectDeviceAddr="+disconnectDeviceAddr+" THIS IS ME, tell otheres I'm still here ############################")
+              if(D) Log.i(TAG, "ConnectedThread run disconnect disconnectDeviceAddr="+disconnectDeviceAddr+" THIS IS ME, tell otheres I'm still here ############################")
               var thisSendMsgCounter:Long = 0
               synchronized { 
                 sendMsgCounter+=1
@@ -864,7 +869,7 @@ class RFCommMultiplexerService extends android.app.Service {
 
             } else {
               // remove disconnectDeviceAddr from our indirectlyConnectedDevicesMap
-              if(D) Log.i(TAG, "ConnectedThread run: disconnect remove disconnectDeviceAddr="+disconnectDeviceAddr+" from our indirectlyConnectedDevicesMap ############################")
+              if(D) Log.i(TAG, "ConnectedThread run disconnect remove disconnectDeviceAddr="+disconnectDeviceAddr+" from our indirectlyConnectedDevicesMap ############################")
               val found = indirectlyConnectedDevicesMap get disconnectDeviceAddr
               found match {
                 case None => 
@@ -878,7 +883,7 @@ class RFCommMultiplexerService extends android.app.Service {
 
           } else if(cmd.equals("strmsg")) {
             // todo: classcast exception if something is fishy with arg1 ?
-            if(D) Log.i(TAG, "ConnectedThread run: strmsg arg1="+arg1+" toName="+toName)
+            if(D) Log.i(TAG, "ConnectedThread run strmsg arg1="+arg1+" toName="+toName)
             //val strmsg = fromName+": "+arg1
             //activityMsgHandler.obtainMessage(RFCommMultiplexerService.MESSAGE_READ, -1, -1, strmsg).sendToTarget()
             // issue fixed: when the device sleeps (or when the activity is unloaded, say, while in the background), MESSAGE_READ WILL NOT ARRIVE
