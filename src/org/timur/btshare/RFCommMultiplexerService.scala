@@ -247,9 +247,6 @@ class RFCommMultiplexerService extends android.app.Service {
 
     connectingCount+=1
 
-    if(mAdapter.isDiscovering)
-      mAdapter.cancelDiscovery   // todo: why do we need to disable discovery, in order to connect to a remote device ?
-
     if(reportConnectState) {
       val msg = activityMsgHandler.obtainMessage(RFCommMultiplexerService.CONNECTION_START)
       val bundle = new Bundle()
@@ -605,15 +602,20 @@ class RFCommMultiplexerService extends android.app.Service {
       }
     } catch {
       case e: IOException =>
-        Log.e(TAG, "Socket Type: " + mSocketType + "create() failed", e)
+        Log.e(TAG, "ConnectThread Socket Type: " + mSocketType + "create() failed", e)
     }
 
     override def run() {
-      if(D) Log.i(TAG, "ConnectThread() run SocketType="+mSocketType)
+      if(D) Log.i(TAG, "ConnectThread run SocketType="+mSocketType)
       setName("ConnectThread" + mSocketType)
 
       // Always cancel discovery because it will slow down a connection
-      mAdapter.cancelDiscovery()
+      if(mAdapter.isDiscovering) {
+        Log.e(TAG, "ConnectThread run isDiscovering -> cancelDiscovery() ###########################")
+        mAdapter.cancelDiscovery()
+      } else {
+        Log.e(TAG, "ConnectThread run NOT isDiscovering ###########################")
+      }
 
       // Make a connection to the BluetoothSocket
       try {
@@ -622,12 +624,13 @@ class RFCommMultiplexerService extends android.app.Service {
         mmSocket.connect()
       } catch {
         case e: IOException =>
+          Log.e(TAG, "ConnectThread run unable to connect() "+mSocketType+" ex=",e)
           // Close the socket
           try {
             mmSocket.close()
           } catch {
             case e2: IOException =>
-              Log.e(TAG, "unable to close() " + mSocketType + " socket during connection failure", e2)
+              Log.e(TAG, "ConnectThread run unable to close() "+mSocketType+" socket during connection failure",e2)
           } finally {
             connectingCount-=1
             if(reportConnectState) {
@@ -657,7 +660,7 @@ class RFCommMultiplexerService extends android.app.Service {
         mmSocket.close()
       } catch {
         case e: IOException =>
-          Log.e(TAG, "close() of connect " + mSocketType + " socket failed", e)
+          Log.e(TAG, "ConnectThread cancel socket.close() failed for " + mSocketType + " socket", e)
       }
     }
   }
