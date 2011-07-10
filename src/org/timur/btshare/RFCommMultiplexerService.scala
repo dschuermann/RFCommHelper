@@ -247,6 +247,9 @@ class RFCommMultiplexerService extends android.app.Service {
 
     connectingCount+=1
 
+    if(mAdapter.isDiscovering)
+      mAdapter.cancelDiscovery   // todo: why do we need to disable discovery, in order to connect to a remote device ?
+
     if(reportConnectState) {
       val msg = activityMsgHandler.obtainMessage(RFCommMultiplexerService.CONNECTION_START)
       val bundle = new Bundle()
@@ -628,7 +631,6 @@ class RFCommMultiplexerService extends android.app.Service {
           } finally {
             connectingCount-=1
             if(reportConnectState) {
-              // need to tell the activity that the connection has failed - and that the connect-animation/busy-image can be disabled/made invisible
               val msg = activityMsgHandler.obtainMessage(RFCommMultiplexerService.CONNECTION_FAILED)
               val bundle = new Bundle()
               bundle.putString(RFCommMultiplexerService.DEVICE_ADDR, remoteDevice.getAddress())
