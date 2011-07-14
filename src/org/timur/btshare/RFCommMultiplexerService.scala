@@ -793,15 +793,14 @@ class RFCommMultiplexerService extends android.app.Service {
         if(D) Log.i(TAG, "ConnectedThread processReceivedRawData: read1 cmd="+cmd+" fromName="+fromName+" fromAddr="+fromAddr+" toAddr="+toAddr+" receivedSendMsgCounter="+receivedSendMsgCounter)
 
         // plug-in app-specific behaviour
-        if(!processBtMessage(cmd, arg1, fromAddr, btMessage){
-          () =>
+        if(!processBtMessage(cmd, arg1, fromAddr, btMessage) { () =>
           // this closure is used as readCodedInputStream() from within subclassed clients
-          if(D) Log.i(TAG, "ConnectedThread processReceivedRawData closure processBtMessage ...")
+          //if(D) Log.i(TAG, "ConnectedThread processReceivedRawData closure from processBtMessage ...")
           var size = codedInputStream.readInt32 // may block
-          if(D) Log.i(TAG, "ConnectedThread processReceivedRawData closure codedInputStream first size="+size)
+          if(D) Log.i(TAG, "ConnectedThread processReceivedRawData closure codedInputStream size="+size)
           var rawdata:Array[Byte] = null
           if(size>0 /*&& running*/) {      // todo: must implement running-check
-            if(D) Log.i(TAG, "ConnectedThread processReceivedRawData closure wait for "+size+" bytes data ...")
+            //if(D) Log.i(TAG, "ConnectedThread processReceivedRawData closure wait for "+size+" bytes data ...")
             rawdata = codedInputStream.readRawBytes(size)     // may be aborted by call to cancel
           }          
 
@@ -821,11 +820,11 @@ class RFCommMultiplexerService extends android.app.Service {
           }
 
           if(size>0 /*&& running*/) {      // todo: must implement running-check
-            if(D) Log.i(TAG, "ConnectedThread processReceivedRawData closure return rawdata="+rawdata)
+            //if(D) Log.i(TAG, "ConnectedThread processReceivedRawData closure return rawdata="+rawdata)
             rawdata
 
           } else {
-            if(D) Log.i(TAG, "ConnectedThread processReceivedRawData closure return null")
+            if(D) Log.i(TAG, "ConnectedThread processReceivedRawData closure return null ##########")
             null
           }
         }) {
@@ -963,9 +962,18 @@ class RFCommMultiplexerService extends android.app.Service {
 
     def writeData(size:Int, data:Array[Byte]) {
       if(D) Log.i(TAG, "ConnectedThread writeData size="+size)
+
       // queue some part of the Array
       // take care of "out of memory" issues
-      var sendData = new Array[Byte](size)
+      var sendData:Array[Byte] = null
+/*
+      try {
+        sendData = new Array[Byte](size)
+      } catch {
+        case e: java.lang.OutOfMemoryError =>
+          sendData=null
+      }
+*/
       if(size>0) {
         while(sendData==null) {
           try {
@@ -981,6 +989,7 @@ class RFCommMultiplexerService extends android.app.Service {
         }
         Array.copy(data,0,sendData,0,size)
       }
+
       sendQueue += sendData
     }
 
@@ -1033,19 +1042,24 @@ class RFCommMultiplexerService extends android.app.Service {
               blobId = btShareMessage.getId
               contentLength = btShareMessage.getDataLength
               progressLastStep = 0
+
             } else {
               val data = obj.asInstanceOf[Array[Byte]]
 
-              activityManager.getMemoryInfo(memoryInfo)
-              if(D) Log.i(TAG, "ConnectedSendThread run size="+data.size+" totalSend="+totalSend+" progressLastStep+contentLength/5="+(progressLastStep+contentLength/5)+" contentLength="+contentLength +" ######################")
+              if(data!=null) {
+                activityManager.getMemoryInfo(memoryInfo)
+                if(D) Log.i(TAG, "ConnectedSendThread run size="+data.size+" totalSend="+totalSend+" progressLastStep+contentLength/5="+(progressLastStep+contentLength/5)+" contentLength="+contentLength +" ######################")
 
-              writeData(data.size, data)
-              // a new blob delivery is in progress... (if data.size==0 then this is the end of this blob delivery)
-              totalSend += data.size
+                writeData(data.size, data)
+                // a new blob delivery is in progress... (if data.size==0 then this is the end of this blob delivery)
+                totalSend += data.size
+              } else {
+                writeData(0, null)
+              }
               
               // todo: if data.size == 0, message back "blobId finished" to activity
               // todo: else if contentLength > 0, message back "percentage progress" to activity
-              if(data.size == 0) {
+              if(data==null || data.size == 0) {
                 val msg = activityMsgHandler.obtainMessage(RFCommMultiplexerService.MESSAGE_DELIVER_PROGRESS)
                 val bundle = new Bundle()
                 bundle.putLong(RFCommMultiplexerService.DELIVER_ID, blobId)
@@ -1112,7 +1126,6 @@ class RFCommMultiplexerService extends android.app.Service {
 
     private def writeData(size:Int, data:Array[Byte]) = synchronized {
       //if(D) Log.i(TAG, "ConnectedSendThread writeData size="+size+" socket="+socket)
-
       try {
         codedOutputStream.writeInt32NoTag(size)
         if(size>0)
