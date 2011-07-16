@@ -146,10 +146,10 @@ class RFCommMultiplexerService extends android.app.Service {
 
   @volatile protected var sendMsgCounter:Long = 0
 
-  @volatile private var mSecureAcceptThread: AcceptThread = null
-  @volatile private var mInsecureAcceptThread: AcceptThread = null
-  @volatile protected var mConnectThread: ConnectThread = null
-  @volatile protected var mConnectedThread: ConnectedThread = null
+  @volatile private var mSecureAcceptThread:AcceptThread = null
+  @volatile private var mInsecureAcceptThread:AcceptThread = null
+  @volatile protected var mConnectThread:ConnectThread = null
+  @volatile protected var mConnectedThread:ConnectedThread = null
   @volatile protected var mState = RFCommMultiplexerService.STATE_NONE
 
   // directlyConnectedDevicesMap contains all directly connected devices mapped to their connectedThread objects
@@ -196,7 +196,7 @@ class RFCommMultiplexerService extends android.app.Service {
   // called by Activity onResume() 
   // but only while getState() == STATE_NONE
   // this is why we quickly switch state to STATE_LISTEN
-  def start() = synchronized {
+  def start(acceptOnlySecureConnectRequests:Boolean) = synchronized {
     if(D) Log.i(TAG, "start: android.os.Build.VERSION.SDK_INT="+android.os.Build.VERSION.SDK_INT)
 
     setState(RFCommMultiplexerService.STATE_LISTEN)   // will send MESSAGE_STATE_CHANGE
@@ -212,16 +212,16 @@ class RFCommMultiplexerService extends android.app.Service {
       if(D) Log.i(TAG, "start new AcceptThread for secure")
       mSecureAcceptThread = new AcceptThread(true)
       if(mSecureAcceptThread != null) 
-        mSecureAcceptThread.start()
+        mSecureAcceptThread.start
     }
 
-    if(android.os.Build.VERSION.SDK_INT>=10) {
-      // start insecure socket only on 2.3.3+
+    if(android.os.Build.VERSION.SDK_INT>=10 && !acceptOnlySecureConnectRequests) {
+      // 2.3.3+: start insecure socket 
       if(mInsecureAcceptThread == null) {
         if(D) Log.i(TAG, "start new AcceptThread for insecure (running on 2.3.3+)")
         mInsecureAcceptThread = new AcceptThread(false)
         if(mInsecureAcceptThread != null)
-          mInsecureAcceptThread.start()
+          mInsecureAcceptThread.start
       }
     }
     if(D) Log.i(TAG, "start: done")
@@ -258,7 +258,7 @@ class RFCommMultiplexerService extends android.app.Service {
     
     // Start the thread to connect with the given device
     mConnectThread = new ConnectThread(newRemoteDevice, secure, reportConnectState)
-    mConnectThread.start()
+    mConnectThread.start
   }
 
   // called by onDestroy()
@@ -409,7 +409,7 @@ class RFCommMultiplexerService extends android.app.Service {
     // Start the thread to manage the connection and perform transmissions
     if(D) Log.i(TAG, "connected, Start ConnectedThread to manage the connection")
     mConnectedThread = new ConnectedThread(socket, socketType)
-    mConnectedThread.start()
+    mConnectedThread.start
 
     // add remoteDevice to list of connected devices
     directlyConnectedDevicesMap += remoteDevice -> mConnectedThread
@@ -694,7 +694,7 @@ class RFCommMultiplexerService extends android.app.Service {
         //codedOutputStream =  CodedOutputStream.newInstance(mmOutStream)
         // todo: start fifo queue delivery via codedOutputStream
         mConnectedSendThread = new ConnectedSendThread(sendQueue,CodedOutputStream.newInstance(mmOutStream),socket)
-        mConnectedSendThread.start()
+        mConnectedSendThread.start
 
       } catch {
         case e: IOException =>
@@ -829,7 +829,7 @@ class RFCommMultiplexerService extends android.app.Service {
           }
         }) {
           // basic behaviour: ping, pong + strmsg
-          if(D) Log.i(TAG, "ConnectedThread run basic behaviour arg1="+arg1+" toName="+toName)
+          if(D) Log.i(TAG, "ConnectedThread run basic behaviour for cmd="+cmd+" arg1="+arg1+" toName="+toName)
 
           if(cmd.equals("ping")) {
 
