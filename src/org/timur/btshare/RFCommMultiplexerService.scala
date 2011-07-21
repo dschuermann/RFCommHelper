@@ -119,8 +119,6 @@ class RFCommMultiplexerService extends android.app.Service {
 
   protected val queueMessageLinkedList = new LinkedList[QueueMessage]()
 
-//  private val sendQueue = new scala.collection.mutable.Queue[Any]
-
 
   def getAllMsgsNewerThan(lastMsgTimeMillis:Long) :ArrayList[QueueMessage] = {
     val retList = new ArrayList[QueueMessage]()
