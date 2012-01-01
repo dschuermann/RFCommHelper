@@ -20,7 +20,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="org.timur.rfcomm"
     android:versionCode="1"
-    android:versionName="2.0.4 - 2012-01-01">
+    android:versionName="2.0.4 - $buildtime">
 
 <!--
   <application android:icon="@drawable/app_icon"

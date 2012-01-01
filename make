@@ -1,4 +1,6 @@
 rm -rf bin gen
-ant debug
-ant -f build-rfcomm.xml
+ant -Ddbglog=true -f pre-build.xml && ant compile
+cd bin/classes
+jar cf ../rfcomm.jar *
+cd ../..
 
