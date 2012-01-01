@@ -69,13 +69,21 @@ import android.net.NetworkInfo
 // app-specific code that needs to stay in memory when the activity goes into background
 // so that filetransfer can continue while the app is in background (and the activity might have been removed from memory)
 
+object RFCommHelper {
+  val RADIO_BT:Int = 1
+  val RADIO_BT_INSECURE:Int = 2
+  val RADIO_P2PWIFI:Int = 4
+  val RADIO_NFC:Int = 8
+}
+
 class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler, 
                    prefSettings:SharedPreferences = null, prefSettingsEditor:SharedPreferences.Editor = null,
                    allOK:() => Unit, allFailed:() => Unit, 
                    //connectedThread:ConnectedThreadTrait,
                    appService:RFServiceTrait,
                    val activityRuntimeClass:java.lang.Class[Activity],
-                   audioConfirmSound:MediaPlayer) {
+                   audioConfirmSound:MediaPlayer,
+                   radioTypeWanted:Int) {
 
   private val TAG = "RFCommHelper"
   private val D = true
@@ -94,10 +102,10 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
   private var nfcForegroundPushMessage:NdefMessage = null
   private var mBluetoothAdapter:BluetoothAdapter = null
   private var radioTypeSelected = false
-  private var desiredBluetooth = true
-  private var desiredWifiDirect = true
-  private var desiredNfc = true
-  private var radioDialogNeeded = false
+  private var desiredBluetooth = false
+  private var desiredWifiDirect = false
+  private var desiredNfc = false
+  private var radioDialogPossibleAndNotYetShown = false
   private var wifiP2pManager:WifiP2pManager = null
   private var wifiDirectBroadcastReceiver:BroadcastReceiver = null
 
@@ -119,9 +127,12 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
   }
 
   if(prefSettings!=null) {
-    desiredBluetooth = prefSettings.getBoolean("radioBluetooth", desiredBluetooth)
-    desiredWifiDirect = prefSettings.getBoolean("radioWifiDirect", desiredWifiDirect)
-    desiredNfc = prefSettings.getBoolean("radioNfc", desiredNfc)
+    if((radioTypeWanted & RFCommHelper.RADIO_BT)!=0)
+      desiredBluetooth = prefSettings.getBoolean("radioBluetooth", true)
+    if((radioTypeWanted & RFCommHelper.RADIO_P2PWIFI)!=0)
+      desiredWifiDirect = prefSettings.getBoolean("radioWifiDirect", true)
+    if((radioTypeWanted & RFCommHelper.RADIO_NFC)!=0)
+      desiredNfc = prefSettings.getBoolean("radioNfc", true)
   }
 
 
@@ -156,7 +167,7 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
     if(D) Log.i(TAG, "onCreate bindService ...")
     activity.bindService(serviceIntent, rfCommServiceConnection, Context.BIND_AUTO_CREATE)
     if(D) Log.i(TAG, "onCreate bindService done")
-    radioDialogNeeded = true // will be evaluated in onResume
+    radioDialogPossibleAndNotYetShown = true // will be evaluated in onResume
   } else {
     Log.e(TAG, "onCreate bindService failed")
     allFailed()
@@ -182,7 +193,7 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
     }
 
     if(!radioTypeSelected) {
-      // offer the user a dialog to turn all wanted radio-hw on
+      // user did not yet see the dialog, offer the dialog to turn all wanted radio on
       val radioSelectDialogBuilder = new AlertDialog.Builder(activity)
       radioSelectDialogBuilder.setTitle("Radio selection")
       // todo: use a nice fancy "radio wave" background ?
@@ -193,43 +204,49 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
       radioSelectDialogLayout.setOrientation(LinearLayout.VERTICAL)
 
       val radioBluetoothCheckbox = new CheckBox(activity)
-      radioBluetoothCheckbox.setText("Bluetooth not available")
-      radioBluetoothCheckbox.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP,19.0f)
-      if(mBluetoothAdapter==null)
-        radioBluetoothCheckbox.setEnabled(false)    // disable if bt-hardware is not available
-      else {
-        radioBluetoothCheckbox.setText("Bluetooth - Off")
-        if(mBluetoothAdapter.isEnabled)
-          radioBluetoothCheckbox.setText("Bluetooth - On")
-        radioBluetoothCheckbox.setChecked(desiredBluetooth)
+      if((radioTypeWanted&RFCommHelper.RADIO_BT)!=0) {
+        radioBluetoothCheckbox.setText("Bluetooth not available")
+        radioBluetoothCheckbox.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP,19.0f)
+        if(mBluetoothAdapter==null)
+          radioBluetoothCheckbox.setEnabled(false)    // disable if bt-hardware is not available
+        else {
+          radioBluetoothCheckbox.setText("Bluetooth (off)")
+          if(mBluetoothAdapter.isEnabled)
+            radioBluetoothCheckbox.setText("Bluetooth")
+          radioBluetoothCheckbox.setChecked(desiredBluetooth)
+        }
+        radioSelectDialogLayout.addView(radioBluetoothCheckbox)
       }
-      radioSelectDialogLayout.addView(radioBluetoothCheckbox)
-
+      
       val radioWifiDirectCheckbox = new CheckBox(activity)
-      radioWifiDirectCheckbox.setText("WiFi Direct not available")
-      radioWifiDirectCheckbox.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP,19.0f)
-      if(wifiP2pManager==null || android.os.Build.VERSION.SDK_INT<14)
-        radioWifiDirectCheckbox.setEnabled(false)   // disable if wifip2p-hardware is not available
-      else {
-        radioWifiDirectCheckbox.setText("WiFi Direct - Off")
-        if(isWifiP2pEnabled)
-          radioWifiDirectCheckbox.setText("WiFi Direct - On")
-        radioWifiDirectCheckbox.setChecked(desiredWifiDirect)
+      if((radioTypeWanted&RFCommHelper.RADIO_P2PWIFI)!=0) {
+        radioWifiDirectCheckbox.setText("WiFi Direct not available")
+        radioWifiDirectCheckbox.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP,19.0f)
+        if(wifiP2pManager==null || android.os.Build.VERSION.SDK_INT<14)
+          radioWifiDirectCheckbox.setEnabled(false)   // disable if wifip2p-hardware is not available
+        else {
+          radioWifiDirectCheckbox.setText("WiFi Direct (off)")
+          if(isWifiP2pEnabled)
+            radioWifiDirectCheckbox.setText("WiFi Direct")
+          radioWifiDirectCheckbox.setChecked(desiredWifiDirect)
+        }
+        radioSelectDialogLayout.addView(radioWifiDirectCheckbox)
       }
-      radioSelectDialogLayout.addView(radioWifiDirectCheckbox)
 
       val radioNfcCheckbox = new CheckBox(activity)
-      radioNfcCheckbox.setText("NFC not available")
-      radioNfcCheckbox.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP,19.0f)
-      if(mNfcAdapter==null || android.os.Build.VERSION.SDK_INT<10)
-        radioNfcCheckbox.setEnabled(false)          // disable if nfc-hardware is not available
-      else {
-        radioNfcCheckbox.setText("NFC - Off")
-        if(mNfcAdapter.isEnabled)
-          radioNfcCheckbox.setText("NFC - On")
-        radioNfcCheckbox.setChecked(desiredNfc)
+      if((radioTypeWanted&RFCommHelper.RADIO_NFC)!=0) {
+        radioNfcCheckbox.setText("NFC not available")
+        radioNfcCheckbox.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP,19.0f)
+        if(mNfcAdapter==null || android.os.Build.VERSION.SDK_INT<10)
+          radioNfcCheckbox.setEnabled(false)          // disable if nfc-hardware is not available
+        else {
+          radioNfcCheckbox.setText("NFC (off)")
+          if(mNfcAdapter.isEnabled)
+            radioNfcCheckbox.setText("NFC")
+          radioNfcCheckbox.setChecked(desiredNfc)
+        }
+        radioSelectDialogLayout.addView(radioNfcCheckbox)
       }
-      radioSelectDialogLayout.addView(radioNfcCheckbox)
 
       radioSelectDialogBuilder.setView(radioSelectDialogLayout)
 
@@ -238,9 +255,12 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
         def onClick(dialogInterface:DialogInterface, m:Int) {
           // persist desired-flags
           if(prefSettingsEditor!=null) {
-            prefSettingsEditor.putBoolean("radioBluetooth",radioBluetoothCheckbox.isChecked)
-            prefSettingsEditor.putBoolean("radioWifiDirect",radioWifiDirectCheckbox.isChecked)
-            prefSettingsEditor.putBoolean("radioNfc",radioNfcCheckbox.isChecked)
+            if((radioTypeWanted&RFCommHelper.RADIO_BT)!=0)
+              prefSettingsEditor.putBoolean("radioBluetooth",radioBluetoothCheckbox.isChecked)
+            if((radioTypeWanted&RFCommHelper.RADIO_P2PWIFI)!=0)
+              prefSettingsEditor.putBoolean("radioWifiDirect",radioWifiDirectCheckbox.isChecked)
+            if((radioTypeWanted&RFCommHelper.RADIO_NFC)!=0)
+              prefSettingsEditor.putBoolean("radioNfc",radioNfcCheckbox.isChecked)
             prefSettingsEditor.commit
           }
           if(backKeyIsExit)
@@ -294,9 +314,12 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
 
                     // persist desired-flags
                     if(prefSettingsEditor!=null) {
-                      prefSettingsEditor.putBoolean("radioBluetooth",desiredBluetooth)
-                      prefSettingsEditor.putBoolean("radioWifiDirect",desiredWifiDirect)
-                      prefSettingsEditor.putBoolean("radioNfc",desiredNfc)
+                      if((radioTypeWanted&RFCommHelper.RADIO_BT)!=0)
+                        prefSettingsEditor.putBoolean("radioBluetooth",desiredBluetooth)
+                      if((radioTypeWanted&RFCommHelper.RADIO_P2PWIFI)!=0)
+                        prefSettingsEditor.putBoolean("radioWifiDirect",desiredWifiDirect)
+                      if((radioTypeWanted&RFCommHelper.RADIO_NFC)!=0)
+                        prefSettingsEditor.putBoolean("radioNfc",desiredNfc)
                       prefSettingsEditor.commit
                     }
 
@@ -321,7 +344,7 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
                     }
 
                     switchOnDesiredRadios
-                    radioDialogNeeded = false  // radioDialog will not again be shown on successive onResume's
+                    radioDialogPossibleAndNotYetShown = false  // radioDialog will not again be shown on successive onResume's
                   }
                 }
               })
@@ -382,22 +405,33 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
       if(D) Log.i(TAG, "onResume wifiP2p not supported")
     }
 
+    // if all desired radio is already on, we don't need to show the radio dialog
+    var radioDialogNeeded = false
+    if((radioTypeWanted&RFCommHelper.RADIO_BT)!=0 && mBluetoothAdapter!=null && !mBluetoothAdapter.isEnabled)
+      radioDialogNeeded = true
+    if((radioTypeWanted&RFCommHelper.RADIO_P2PWIFI)!=0 && wifiP2pManager!=null && !isWifiP2pEnabled)
+      radioDialogNeeded = true
+    if((radioTypeWanted&RFCommHelper.RADIO_NFC)!=0 && mNfcAdapter!=null && !mNfcAdapter.isEnabled)
+      radioDialogNeeded = true
     if(radioDialogNeeded) {
-      new Thread() {
-        override def run() {
-          if(D) Log.i(TAG, "onResume new thread -> radioDialog")
-          radioDialog(true)
-        }
-      }.start
-    } else {
-      new Thread() {
-        override def run() {
-          // delay this, so that user can still exit app if wanted
-          try { Thread.sleep(600) } catch { case ex:Exception => }
-          if(!activityDestroyed)
-            switchOnDesiredRadios
-        }
-      }.start
+      if(radioDialogPossibleAndNotYetShown) {
+        // show the radio dialog
+        new Thread() {
+          override def run() {
+            if(D) Log.i(TAG, "onResume new thread -> radioDialog")
+            radioDialog(true)
+          }
+        }.start
+      } else {
+        new Thread() {
+          override def run() {
+            // delay this, so that user can still exit app if wanted
+            try { Thread.sleep(600) } catch { case ex:Exception => }
+            if(!activityDestroyed)
+              switchOnDesiredRadios
+          }
+        }.start
+      }
     }
 
     if(mNfcAdapter!=null && mNfcAdapter.isEnabled) {
