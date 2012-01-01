@@ -1,0 +1,48 @@
+
+RFComm for Android
+==================
+
+RFComm is a generic Android service that can be used to develop Bluetooth and WiFi-Direct applications.
+
+RFComm service...
+
+* simplifies the process of establishing p2p connections
+* acts as a hub for other devices to connect
+* manages multiple Bluetooth RFComm connections in the background
+* forwards messages targeted towards other devices in the network
+* allows the implementation of application specific protocol extensions
+* makes use of Google protobuf to implement the packaging of messages
+* is written in Scala 2.8.x
+* can be deployed on Android 2.2+
+
+Instructions on how to build from source can be found below. 
+
+
+Initial build setup
+-------------------
+
+Building requires Android SDK, [Scala-2.8.1.final](http://www.scala-lang.org/downloads/distrib/files/scala-2.8.1.final.tgz), JDK 6 and Ant 1.8.2.
+
+
+$ cp local.properties.sample local.properties
+
+- Adjust "sdk.dir" setting in "local.properties"
+- Adjust "scala.dir" setting in "local.properties" 
+
+
+Building
+--------
+
+$ ./make
+
+This will create "bin/rfcomm.jar" which can be placed in the "libs/"-folder of your Android 2.2+ project.
+
+
+How to use
+----------
+
+A ready-to-use "rfcomm.jar" is provided in the "bin/" folder.
+
+In order to make use of this service, you need to copy "bin/rfcomm.jar" to your Android project "libs/" folder.
+
+
