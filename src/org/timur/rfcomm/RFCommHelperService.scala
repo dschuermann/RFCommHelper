@@ -748,7 +748,6 @@ class RFCommHelperService extends android.app.Service {
               Log.i(TAG, "WIFI_P2P_CONNECTION_CHANGED_ACTION onConnectionInfoAvailable groupOwnerAddress="+wifiP2pInfo.groupOwnerAddress+" isGroupOwner="+wifiP2pInfo.isGroupOwner+" ###############")
 
               // start socket communication
-              // todo: probably should move this code into the service thread?
               new Thread() {
                 override def run() {
                   var serverSocket:ServerSocket = null
