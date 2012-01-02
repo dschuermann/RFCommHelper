@@ -90,6 +90,7 @@ object RFCommHelperService {
   val MESSAGE_RECEIVED_FILE = 13
   val UI_UPDATE = 14
   val ALERT_MESSAGE = 15
+  val CONNECTING = 16
 
   // Key names received from RFCommHelperService to the activity handler
   val DEVICE_NAME = "device_name"
@@ -686,6 +687,14 @@ class RFCommHelperService extends android.app.Service {
                             if(D) Log.i(TAG, "wifiP2pManager.connect() success ####")
                             // we expect WIFI_P2P_CONNECTION_CHANGED_ACTION in WiFiDirectBroadcastReceiver to notify us
                             // todo: however this often does NOT happen
+                            
+                            // todo: we are optimistic, let's render the connect-progress animation (like we do in connectBt)
+                            val msg = activityMsgHandler.obtainMessage(RFCommHelperService.CONNECTION_START)
+                            val bundle = new Bundle
+                            bundle.putString(RFCommHelperService.DEVICE_ADDR, rfCommHelper.p2pRemoteAddressToConnect)
+                            bundle.putString(RFCommHelperService.DEVICE_NAME, "") // todo: do we have a target name?
+                            msg.setData(bundle)
+                            activityMsgHandler.sendMessage(msg)
                           }
 
                           override def onFailure(reason:Int) {

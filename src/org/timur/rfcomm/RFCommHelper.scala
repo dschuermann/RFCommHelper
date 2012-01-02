@@ -259,13 +259,22 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
       
       val radioWifiDirectCheckbox = new CheckBox(activity)
       if((radioTypeWanted&RFCommHelper.RADIO_P2PWIFI)!=0) {
+/*
+        // the app want's to use p2pWifi, if it is supported on this device
+        // however, we need to wait a little for wifiDirectBroadcastReceiver to call our setIsWifiP2pEnabled() method
+        // so we know if isWifiP2pEnabled is true
+        // note: we can sleep here, since we are runing in a separate thread
+        if(D) Log.i(TAG, "radioDialog little sleep to find out about the state of isWifiP2pEnabled="+isWifiP2pEnabled)
+        try { Thread.sleep(500) } catch { case ex:Exception => }
+        if(D) Log.i(TAG, "radioDialog little sleep to find out about the state of isWifiP2pEnabled="+isWifiP2pEnabled+" DONE ##############")
+*/        
         radioWifiDirectCheckbox.setText("WiFi Direct not available")
         radioWifiDirectCheckbox.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP,19.0f)
         if(wifiP2pManager==null || android.os.Build.VERSION.SDK_INT<14)
           radioWifiDirectCheckbox.setEnabled(false)   // disable if wifip2p-hardware is not available
         else {
           radioWifiDirectCheckbox.setText("WiFi Direct (off)")
-          if(isWifiP2pEnabled)
+          if(isWifiP2pEnabled)    // todo tmtmtm: on start this is NOT set true, even though p2pWifi IS enabled
             radioWifiDirectCheckbox.setText("WiFi Direct")
           radioWifiDirectCheckbox.setChecked(desiredWifiDirect)
         }
@@ -407,6 +416,7 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
         wifiP2pManager = activity.getSystemService(Context.WIFI_P2P_SERVICE).asInstanceOf[WifiP2pManager]
         if(wifiP2pManager!=null) {
           // register p2pChannel and wifiDirectBroadcastReceiver
+          // note: this will result in a call to setIsWifiP2pEnabled(), so we know wether p2pWifi is already activated!
           if(D) Log.i(TAG, "onResume wifiP2p is supported, initialze p2pChannel and register wifiDirectBroadcastReceiver")
           p2pChannel = wifiP2pManager.initialize(activity, activity.getMainLooper, null)
           wifiDirectBroadcastReceiver = rfCommService.newWiFiDirectBroadcastReceiver(wifiP2pManager, this, rfCommService)
@@ -420,6 +430,16 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
 
     if(radioDialogPossibleAndNotYetShown) {
       // if all desired radio is already on, we don't need to show the radio dialog
+
+      if((radioTypeWanted&RFCommHelper.RADIO_P2PWIFI)!=0 && wifiP2pManager!=null && !isWifiP2pEnabled) {
+        // the app want's to use p2pWifi, if it is supported by this device
+        // however, we need to wait a little for wifiDirectBroadcastReceiver to call our setIsWifiP2pEnabled() method, so we know if isWifiP2pEnabled is true
+        // if isWifiP2pEnabled is true, we might not need to show the radio-select dialog
+        if(D) Log.i(TAG, "onResume little sleep to find out about the state of isWifiP2pEnabled="+isWifiP2pEnabled)
+        try { Thread.sleep(300) } catch { case ex:Exception => }
+        if(D) Log.i(TAG, "onResume little sleep to find out about the state of isWifiP2pEnabled="+isWifiP2pEnabled+" DONE ##############")
+      }
+
       var radioDialogNeeded = false
       if((radioTypeWanted&RFCommHelper.RADIO_BT)!=0 && mBluetoothAdapter!=null && !mBluetoothAdapter.isEnabled)
         radioDialogNeeded = true
@@ -482,8 +502,9 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
       // RFCommService will otherwise not answer incoming connect requests
       if(D) Log.i(TAG, "onResume set rfCommService.acceptAndConnect="+rfCommService.acceptAndConnect)
 
-      if(rfCommService.state!=RFCommHelperService.STATE_CONNECTED)    // ???
-        msgFromServiceHandler.obtainMessage(RFCommHelperService.UI_UPDATE, -1, -1).sendToTarget
+      // no! this undo's any visual activity (for instance the connect-progress animation)
+      //if(rfCommService.state!=RFCommHelperService.STATE_CONNECTED)    // ???
+      //  msgFromServiceHandler.obtainMessage(RFCommHelperService.UI_UPDATE, -1, -1).sendToTarget
     } else {
       Log.i(TAG, "onResume rfCommService==null, acceptAndConnect not set")
     }
@@ -653,36 +674,25 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
             if(remoteBluetoothDevice!=null) {
               //val sendFilesCount = if(selectedFileStringsArrayList!=null) selectedFileStringsArrayList.size else 0
               //if(D) Log.i(TAG, "onNewIntent NdefAction sendFilesCount="+sendFilesCount+" ...")
-              if(D) Log.i(TAG, "onNewIntent NdefAction ...")
+              if(D) Log.i(TAG, "onNewIntent NdefAction remoteBluetoothDevice!=null")
 
               if(mBluetoothAdapter.getAddress > remoteBluetoothDevice.getAddress) {
                 // our local btAddr is > than the remote btAddr: we become the actor and we will bt-connect
                 // our activity may still be in onPause mode due to NFC activity: sleep a bit before 
                 if(D) Log.i(TAG, "onNewIntent NdefAction connecting ...")
+
                 connectAttemptFromNfc=true
                 rfCommService.connectBt(remoteBluetoothDevice)
+                // connectBt() will send CONNECTION_START to the activity, which will draw the connect-progress animation
 
               } else {
                 // our local btAddr is < than the remote btAddr: we just wait for a bt-connect request
                 if(D) Log.i(TAG, "onNewIntent passively waiting for incoming connect request... mSecureAcceptThread="+rfCommService.mSecureAcceptThread)
 
-/* todo: re-include this (cannot access stuff like radioLogoView here)
-                //if(D) Log.i(TAG, "onNewIntent runOnUiThread update user... context="+activity)
-                AndrTools.runOnUiThread(activity) { () =>
-                  if(radioLogoView!=null)
-                    radioLogoView.setImageResource(R.drawable.bluetooth)
-                  if(userHint1View!=null)
-                    userHint1View.setText("waiting for "+remoteBluetoothDevice.getName+" "+remoteBluetoothDevice.getAddress)
-                  // show a little round progress bar
-                  if(userHint2View!=null)
-                    userHint2View.setVisibility(View.GONE)
-                  if(userHint3View!=null)
-                    userHint3View.setVisibility(View.GONE)
-                  if(simpleProgressBarView!=null)
-                    simpleProgressBarView.setVisibility(View.VISIBLE)
-                }
-*/
-
+                // show "connecting progress" animation
+                // todo: what if noone connects? can this aniation be aborted, does it timeout?
+                if(msgFromServiceHandler!=null)
+                  msgFromServiceHandler.obtainMessage(RFCommHelperService.CONNECTING, -1, -1, remoteBluetoothDevice.getName+" "+remoteBluetoothDevice.getAddress).sendToTarget
               }
             }
           }
