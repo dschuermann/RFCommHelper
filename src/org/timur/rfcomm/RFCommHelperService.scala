@@ -138,6 +138,13 @@ class RFCommHelperService extends android.app.Service {
   override def onBind(intent:Intent) :IBinder = localBinder 
 
 
+  override def onCreate() {
+    //if(D) Log.i(TAG, "onCreate ####################")
+    // note: our service is started via bindService() from RFCommHelper constructor (from activity onCreate())
+    //       but it is not yet clear wether "bt new AcceptThread" is needed
+    //       when it is clear this is wanted, activity will call start() from onResume()
+  }
+
   // called by Activity onResume() 
   // but only while state == STATE_NONE
   // this is why we quickly switch state to STATE_LISTEN
@@ -157,9 +164,9 @@ class RFCommHelperService extends android.app.Service {
       if(myBtAddr==null)
         myBtAddr = "unknown"  // tmtmtm
     }
-    if(D) Log.i(TAG, "start myBtName="+myBtName+" myBtAddr="+myBtAddr+" mAdapter="+mAdapter+" ################################")
+    if(D) Log.i(TAG, "start myBtName="+myBtName+" myBtAddr="+myBtAddr+" mAdapter="+mAdapter)
 
-    // Start the thread to listen on a BluetoothServerSocket
+    // start thread to listen on BluetoothServerSocket
     if(mSecureAcceptThread == null) {
       if(D) Log.i(TAG, "start new AcceptThread for secure")
       mSecureAcceptThread = new AcceptThread()
@@ -181,6 +188,7 @@ class RFCommHelperService extends android.app.Service {
 */
     if(D) Log.i(TAG, "start: done")
   }
+
 
   // called by the activity: options menu "connect" -> onActivityResult() -> connectDevice()
   // called by the activity: as a result of NfcAdapter.ACTION_NDEF_DISCOVERED

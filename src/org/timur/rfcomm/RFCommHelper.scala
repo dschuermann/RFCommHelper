@@ -197,7 +197,7 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
         //if(prefSettings!=null)
         //  acceptOnlySecureConnectRequests = prefSettings.getBoolean("acceptOnlySecureConnectRequests",true)
         if(D) Log.i(TAG, "initBtNfc rfCommService.start acceptOnlySecureConnectReq="+acceptOnlySecureConnectRequests+" ...")
-        rfCommService.start(acceptOnlySecureConnectRequests) // -> AcceptThread().run
+        rfCommService.start(acceptOnlySecureConnectRequests) // -> bt (new AcceptThread()).start -> run()
       }
 
       msgFromServiceHandler.obtainMessage(RFCommHelperService.UI_UPDATE, -1, -1).sendToTarget
@@ -370,9 +370,10 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
 
   def onResume() {
     if(D) Log.i(TAG, "onResume mNfcAdapter="+mNfcAdapter+" wifiP2pManager="+wifiP2pManager+" isWifiP2pEnabled="+isWifiP2pEnabled)
-    // find out if nfc hardware is supported (not necessarily on)
-    if(android.os.Build.VERSION.SDK_INT>=10) {
-      if(mNfcAdapter==null) {
+
+    if((radioTypeWanted&RFCommHelper.RADIO_NFC)!=0) {
+      // find out if nfc hardware is supported (not necessarily on)
+      if(android.os.Build.VERSION.SDK_INT>=10 && mNfcAdapter==null) {
         try {
           mNfcAdapter = NfcAdapter.getDefaultAdapter(activity)
           if(D) Log.i(TAG, "onResume mNfcAdapter="+mNfcAdapter)
@@ -382,39 +383,42 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
             Log.e(TAG, "onResume NfcAdapter.getDefaultAdapter(this) failed "+ncdferr)
         }
       }
-    }
-    if(mNfcAdapter!=null) {
-      if(D) Log.i(TAG, "onResume nfc supported")
-    } else {
-      if(D) Log.i(TAG, "onResume nfc not supported")
-    }
-
-    // find out if bt-hardware is supported (not necessarily on)
-    if(mBluetoothAdapter==null) {
-      // get local Bluetooth adapter
-      mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter
-      // If the adapter is null, then Bluetooth is not supported (mBluetoothAdapter must not be null, even if turned off)
-    }
-    if(mBluetoothAdapter!=null) {
-      if(D) Log.i(TAG, "onResume bt supported")
-    } else {
-      Log.e(TAG, "onResume bt not supported")
-    }
-
-    // find out if wifi-direct is supported, if so initialze wifiP2pManager
-    if(android.os.Build.VERSION.SDK_INT>=14 && wifiP2pManager==null) {
-      // todo tmtmtm: WE SHOULD NOT DO THIS IF THE PARENT APP DID NOT REQUEST p2pWifi !!!
-      wifiP2pManager = activity.getSystemService(Context.WIFI_P2P_SERVICE).asInstanceOf[WifiP2pManager]
-      if(wifiP2pManager!=null) {
-        // register p2pChannel and wifiDirectBroadcastReceiver
-        if(D) Log.i(TAG, "onResume wifiP2p is supported, initialze p2pChannel and register wifiDirectBroadcastReceiver")
-        p2pChannel = wifiP2pManager.initialize(activity, activity.getMainLooper, null)
-        wifiDirectBroadcastReceiver = rfCommService.newWiFiDirectBroadcastReceiver(wifiP2pManager, this, rfCommService)
-        activity.registerReceiver(wifiDirectBroadcastReceiver, intentFilter)
+      if(mNfcAdapter!=null) {
+        if(D) Log.i(TAG, "onResume nfc supported")
+      } else {
+        if(D) Log.i(TAG, "onResume nfc not supported")
       }
     }
-    if(wifiP2pManager==null) {
-      if(D) Log.i(TAG, "onResume wifiP2p not supported")
+
+    if((radioTypeWanted&RFCommHelper.RADIO_BT)!=0) {
+      // find out if bt-hardware is supported (not necessarily on)
+      if(mBluetoothAdapter==null) {
+        // get local Bluetooth adapter
+        mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter
+        // If the adapter is null, then Bluetooth is not supported (mBluetoothAdapter must not be null, even if turned off)
+      }
+      if(mBluetoothAdapter!=null) {
+        if(D) Log.i(TAG, "onResume bt supported")
+      } else {
+        Log.e(TAG, "onResume bt not supported")
+      }
+    }
+
+    if((radioTypeWanted&RFCommHelper.RADIO_P2PWIFI)!=0) {
+      // find out if wifi-direct is supported, if so initialze wifiP2pManager
+      if(android.os.Build.VERSION.SDK_INT>=14 && wifiP2pManager==null) {
+        wifiP2pManager = activity.getSystemService(Context.WIFI_P2P_SERVICE).asInstanceOf[WifiP2pManager]
+        if(wifiP2pManager!=null) {
+          // register p2pChannel and wifiDirectBroadcastReceiver
+          if(D) Log.i(TAG, "onResume wifiP2p is supported, initialze p2pChannel and register wifiDirectBroadcastReceiver")
+          p2pChannel = wifiP2pManager.initialize(activity, activity.getMainLooper, null)
+          wifiDirectBroadcastReceiver = rfCommService.newWiFiDirectBroadcastReceiver(wifiP2pManager, this, rfCommService)
+          activity.registerReceiver(wifiDirectBroadcastReceiver, intentFilter)
+        }
+      }
+      if(wifiP2pManager==null) {
+        if(D) Log.i(TAG, "onResume wifiP2p not supported")
+      }
     }
 
     if(radioDialogPossibleAndNotYetShown) {
