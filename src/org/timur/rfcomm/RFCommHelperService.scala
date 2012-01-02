@@ -376,7 +376,7 @@ class RFCommHelperService extends android.app.Service {
   /*private*/ class AcceptThread(secure:Boolean=true) extends Thread {
     if(D) Log.i(TAG, "AcceptThread")
     private var mSocketType: String = /*if(secure)*/ "Secure" /*else "Insecure"*/
-    private var mmServerSocket: BluetoothServerSocket = null
+    private var mmServerSocket:BluetoothServerSocket = null
     mmServerSocket = null
     try {
 /*
@@ -403,12 +403,13 @@ class RFCommHelperService extends android.app.Service {
       if(mmServerSocket==null)
         return
 
-      setName("AcceptThread" + mSocketType)
+      if(D) Log.i(TAG, "AcceptThread run mSocketType="+mSocketType+" mmServerSocket="+mmServerSocket+" ################")
+      setName("AcceptThread"+mSocketType)
       var socket:BluetoothSocket = null
 
       // Listen to the server socket if we're not connected
       while(mmServerSocket!=null) {
-        if(D) Log.i(TAG, "AcceptThread run Socket Type: " + mSocketType)
+        if(D) Log.i(TAG, "AcceptThread run loop mSocketType="+mSocketType+" mmServerSocket="+mmServerSocket+" ################")
         try {
           synchronized {
             socket = null
@@ -423,10 +424,10 @@ class RFCommHelperService extends android.app.Service {
               Log.e(TAG, "AcceptThread run SocketType="+mSocketType+" state="+state+" ioex="+ioex)
         }
 
-        if(socket != null) {
+        if(D) Log.i(TAG, "AcceptThread socket="+socket+" acceptAndConnect="+acceptAndConnect)
+        if(socket!=null) {
           // a bt connection is technically possible and can be accepted
-          // note: this is where we can decide to acceptAndConnect - or not
-          // todo: acceptAndConnect can be false here, while it is set to true in the activity (CRAZY!)
+          // note: this is where we can decide to acceptAndConnect (or not)
           if(!acceptAndConnect) {
             if(D) Log.i(TAG, "AcceptThread - denying incoming connect request, acceptAndConnect="+acceptAndConnect+" context="+context)
             // hangup
