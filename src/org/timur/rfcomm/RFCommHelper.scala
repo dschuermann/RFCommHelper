@@ -211,6 +211,18 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
     }
   }
 
+  def storeRadioSelection(selectedBt:Boolean, selectedWifi:Boolean, selectedNfc:Boolean) {
+      if(prefSettingsEditor!=null) {
+        if((radioTypeWanted&RFCommHelper.RADIO_BT)!=0)
+          prefSettingsEditor.putBoolean("radioBluetooth",selectedBt)
+        if((radioTypeWanted&RFCommHelper.RADIO_P2PWIFI)!=0)
+          prefSettingsEditor.putBoolean("radioWifiDirect",selectedWifi)
+        if((radioTypeWanted&RFCommHelper.RADIO_NFC)!=0)
+          prefSettingsEditor.putBoolean("radioNfc",selectedNfc)
+        prefSettingsEditor.commit
+      }
+  }
+  
   // dynamically create a dialog box (not inflated from xml)
   def radioDialog(backKeyIsExit:Boolean) {
     if(D) Log.i(TAG, "radioDialog radioTypeSelected="+radioTypeSelected)
@@ -281,15 +293,7 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
       radioSelectDialogBuilder.setNegativeButton(backKeyLabel, new DialogInterface.OnClickListener() {
         def onClick(dialogInterface:DialogInterface, m:Int) {
           // persist desired-flags
-          if(prefSettingsEditor!=null) {
-            if((radioTypeWanted&RFCommHelper.RADIO_BT)!=0)
-              prefSettingsEditor.putBoolean("radioBluetooth",radioBluetoothCheckbox.isChecked)
-            if((radioTypeWanted&RFCommHelper.RADIO_P2PWIFI)!=0)
-              prefSettingsEditor.putBoolean("radioWifiDirect",radioWifiDirectCheckbox.isChecked)
-            if((radioTypeWanted&RFCommHelper.RADIO_NFC)!=0)
-              prefSettingsEditor.putBoolean("radioNfc",radioNfcCheckbox.isChecked)
-            prefSettingsEditor.commit
-          }
+          storeRadioSelection(radioBluetoothCheckbox.isChecked,radioWifiDirectCheckbox.isChecked,radioNfcCheckbox.isChecked)
           if(backKeyIsExit)
             activity.finish
         }
@@ -305,12 +309,14 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
       if(backKeyIsExit)
         radioSelectDialogBuilder.setOnKeyListener(new DialogInterface.OnKeyListener() {
           override def onKey(dialogInterface:DialogInterface, keyCode:Int, keyEvent:KeyEvent) :Boolean = {
-            if(keyCode == KeyEvent.KEYCODE_BACK && keyEvent.getAction()==KeyEvent.ACTION_UP && !keyEvent.isCanceled()) {
-              if(D) Log.i(TAG, "radioDialog onKeyDown KEYCODE_BACK return false")
-              return false
+            if(keyCode == KeyEvent.KEYCODE_BACK && keyEvent.getAction()==KeyEvent.ACTION_UP /*&& !keyEvent.isCanceled()*/) {
+              if(D) Log.i(TAG, "radioDialog onKeyDown KEYCODE_BACK backKeyIsExit="+backKeyIsExit)
+              storeRadioSelection(radioBluetoothCheckbox.isChecked,radioWifiDirectCheckbox.isChecked,radioNfcCheckbox.isChecked)
+              if(backKeyIsExit)
+                activity.finish
+              return true
             }
-            if(D) Log.i(TAG, "radioDialog onKeyDown not KEYCODE_BACK return true")
-            return true
+            return false
           }                   
         })
 
@@ -343,16 +349,7 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
                     dialogInterface.cancel
 
                     // persist desired-flags
-                    if(prefSettingsEditor!=null) {
-                      if((radioTypeWanted&RFCommHelper.RADIO_BT)!=0)
-                        prefSettingsEditor.putBoolean("radioBluetooth",desiredBluetooth)
-                      if((radioTypeWanted&RFCommHelper.RADIO_P2PWIFI)!=0)
-                        prefSettingsEditor.putBoolean("radioWifiDirect",desiredWifiDirect)
-                      if((radioTypeWanted&RFCommHelper.RADIO_NFC)!=0)
-                        prefSettingsEditor.putBoolean("radioNfc",desiredNfc)
-                      prefSettingsEditor.commit
-                    }
-
+                    storeRadioSelection(desiredBluetooth,desiredWifiDirect,desiredNfc)
                     initBtNfc  // start bt-accept-thread and init-nfc
                     switchOnDesiredRadios  // open wireless settings and let user enable radio-hw
                     radioDialogPossibleAndNotYetShown = false  // radioDialog will not again be shown on successive onResume's
