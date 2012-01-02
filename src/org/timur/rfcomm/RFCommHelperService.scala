@@ -89,6 +89,7 @@ object RFCommHelperService {
   val MESSAGE_YOURTURN = 12
   val MESSAGE_RECEIVED_FILE = 13
   val UI_UPDATE = 14
+  val ALERT_MESSAGE = 15
 
   // Key names received from RFCommHelperService to the activity handler
   val DEVICE_NAME = "device_name"
@@ -104,7 +105,7 @@ object RFCommHelperService {
 
 class RFCommHelperService extends android.app.Service {
   // public objects
-  var context:Context = null              // set by activity on new ServiceConnection()
+  var activity:Activity = null              // set by activity on new ServiceConnection()
   var activityMsgHandler:Handler = null   // set by activity on new ServiceConnection()
   var appService:RFServiceTrait = null
   @volatile var acceptAndConnect = true   // set by activity on onPause/onResume: false = activity is sleeping, don't accept incoming connect requests
@@ -429,16 +430,16 @@ class RFCommHelperService extends android.app.Service {
           // a bt connection is technically possible and can be accepted
           // note: this is where we can decide to acceptAndConnect (or not)
           if(!acceptAndConnect) {
-            if(D) Log.i(TAG, "AcceptThread - denying incoming connect request, acceptAndConnect="+acceptAndConnect+" context="+context)
+            if(D) Log.i(TAG, "AcceptThread - denying incoming connect request, acceptAndConnect="+acceptAndConnect+" activity="+activity)
             // hangup
             socket.close
 
-            if(context!=null) {
-              context.asInstanceOf[Activity].runOnUiThread(new Runnable() {
+            if(activity!=null) {
+              activity.runOnUiThread(new Runnable() {
                 override def run() { 
                   // we want to show our appname, this toast will appear if Anymime is running in background
-                  Toast.makeText(context, "Bluetooth connect request is being denied. "+
-                                          "Run Anymime main screen in foreground to accept connections.", Toast.LENGTH_LONG).show
+                  Toast.makeText(activity, "Bluetooth connect request is being denied. "+
+                                           "Run Anymime main screen in foreground to accept connections.", Toast.LENGTH_LONG).show
                 }
               })
             } else {
@@ -543,17 +544,13 @@ class RFCommHelperService extends android.app.Service {
         case ex:IOException =>
           Log.e(TAG, "ConnectThread run unable to connect() "+mSocketType+" IOException",ex)
           var errMsg = ex.getMessage
-/*
-          if(errMsg=="Connection reset by peer")
-            errMsg = "Connection failed"
+          if(activityMsgHandler!=null)
+            activityMsgHandler.obtainMessage(RFCommHelperService.ALERT_MESSAGE, -1, -1, errMsg).sendToTarget
+          else
+            AndrTools.runOnUiThread(activity) { () =>
+              Toast.makeText(activity, errMsg, Toast.LENGTH_LONG).show
+            }
 
-          if(context!=null)
-            context.asInstanceOf[Activity].runOnUiThread(new Runnable() {
-              override def run() { 
-                Toast.makeText(context, errMsg, Toast.LENGTH_LONG).show
-              }
-            })
-*/
           // Close the socket
           try {
             mmSocket.close
@@ -684,9 +681,12 @@ class RFCommHelperService extends android.app.Service {
                           }
 
                           override def onFailure(reason:Int) {
-                            if(D) Log.i(TAG, "wifiP2pManager.connect() failed reason="+reason+" ##################")
+                            val errMsg = "wifiP2pManager.connect() failed reason="+reason
+                            if(D) Log.i(TAG, errMsg+" ##################")
                             // reason ERROR=0, P2P_UNSUPPORTED=1, BUSY=2
                             //Toast.makeText(activity, "Connect failed. Retry.", Toast.LENGTH_SHORT).show()
+                            if(activityMsgHandler!=null)
+                              activityMsgHandler.obtainMessage(RFCommHelperService.ALERT_MESSAGE, -1, -1, errMsg).sendToTarget
                           }
                         })
                         if(D) Log.i(TAG, "wifiP2pManager.connect() done")

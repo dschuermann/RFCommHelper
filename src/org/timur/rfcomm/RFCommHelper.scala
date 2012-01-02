@@ -150,12 +150,17 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
       rfCommService = rawBinder.asInstanceOf[RFCommHelperService#LocalBinder].getService
       if(rfCommService==null) {
         Log.e(TAG, "onCreate onServiceConnected no interface to service, rfCommService==null")
-        // todo: run on ui-thread?
-        Toast.makeText(activity, "Error - failed to get service interface from binder", Toast.LENGTH_LONG).show    // todo: create more 'human' text
+        val errMsg = "Error - failed to get service interface from binder"
+        if(msgFromServiceHandler!=null)
+          msgFromServiceHandler.obtainMessage(RFCommHelperService.ALERT_MESSAGE, -1, -1, errMsg).sendToTarget
+        else
+          AndrTools.runOnUiThread(activity) { () =>
+            Toast.makeText(activity, errMsg, Toast.LENGTH_LONG).show    // todo: create more 'human' text
+          }
         return
       }
       if(D) Log.i(TAG, "onCreate onServiceConnected got rfCommService object")
-      rfCommService.context = activity
+      rfCommService.activity = activity
       rfCommService.activityMsgHandler = msgFromServiceHandler
       rfCommService.appService = appService
       // everything is OK!
@@ -325,9 +330,12 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
                   if(D) Log.i(TAG, "radioSelectDialog onClick desiredBluetooth="+desiredBluetooth+" desiredWifiDirect="+desiredWifiDirect+" desiredNfc="+desiredNfc)
                   if(desiredBluetooth==false && desiredWifiDirect==false) {
                     // we need at least 1 type of transport-radio
-                    AndrTools.runOnUiThread(activity) { () =>
-                      Toast.makeText(activity, "No radio enabled for transport", Toast.LENGTH_SHORT).show
-                    }
+                    if(msgFromServiceHandler!=null)
+                      msgFromServiceHandler.obtainMessage(RFCommHelperService.ALERT_MESSAGE, -1, -1, "No radio enabled for transport").sendToTarget
+                    else
+                      AndrTools.runOnUiThread(activity) { () =>
+                        Toast.makeText(activity, "No radio enabled for transport", Toast.LENGTH_SHORT).show
+                      }
                     // we let the dialog stay open
 
                   } else {
@@ -527,7 +535,7 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
     if(rfCommService!=null) {
       rfCommService.stopActiveConnection
       rfCommService.stopAcceptThread
-      rfCommService.context = null
+      rfCommService.activity = null
     } else {
       Log.e(TAG, "onDestroy rfCommService=null cannot call stopActiveConnection")
     }
@@ -701,8 +709,12 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
 
         } else {
           // User did not enable Bluetooth or an error occured
-          if(D) Log.i(TAG, "onActivityResult BT not enabled")
-          Toast.makeText(activity, "Bluetooth was not enabled", Toast.LENGTH_SHORT).show
+          val errMsg = "Bluetooth was not enabled"
+          if(D) Log.i(TAG, "onActivityResult "+errMsg)
+          if(msgFromServiceHandler!=null)
+            msgFromServiceHandler.obtainMessage(RFCommHelperService.ALERT_MESSAGE, -1, -1, errMsg).sendToTarget
+          else
+            Toast.makeText(activity, errMsg, Toast.LENGTH_SHORT).show
           activity.finish
         }
         return true
@@ -732,7 +744,7 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
                 val btAddr = btDevice.substring(idxCR+1)
                 val btName = btDevice.substring(0,idxCR)
                 if(D) Log.i(TAG, "REQUEST_SELECT_PAIRED_DEVICE_AND_CONNECT_TO btName="+btDevice+" btAddr="+btAddr)
-            		Toast.makeText(activity, "Connecting to "+btName, Toast.LENGTH_SHORT).show()
+            		Toast.makeText(activity, "Bt connecting to "+btName, Toast.LENGTH_SHORT).show
                
                 // connect to btAddr
                 val remoteBluetoothDevice = BluetoothAdapter.getDefaultAdapter.getRemoteDevice(btAddr)
@@ -842,7 +854,7 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
   def switchOnDesiredRadios() {
     if(desiredNfc && android.os.Build.VERSION.SDK_INT>=10 && mNfcAdapter!=null && !mNfcAdapter.isEnabled) {
       // let user enable nfc
-      if(D) Log.i(TAG, "activityMsgHandler switchOnDesiredRadios !mNfcAdapter.isEnabled: ask user to enable nfc")
+      if(D) Log.i(TAG, "msgFromServiceHandler switchOnDesiredRadios !mNfcAdapter.isEnabled: ask user to enable nfc")
       AndrTools.runOnUiThread(activity) { () =>
         Toast.makeText(activity, "Please enable 'NFC', then go back...", Toast.LENGTH_SHORT).show
       }
@@ -851,7 +863,7 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
 
     } else if(desiredWifiDirect && android.os.Build.VERSION.SDK_INT>=14 && wifiP2pManager!=null && !isWifiP2pEnabled) {
       // let user enable wifip2p
-      if(D) Log.i(TAG, "activityMsgHandler switchOnDesiredRadios isWifiP2pEnabled="+isWifiP2pEnabled+": ask user to enable p2p")
+      if(D) Log.i(TAG, "msgFromServiceHandler switchOnDesiredRadios isWifiP2pEnabled="+isWifiP2pEnabled+": ask user to enable p2p")
       AndrTools.runOnUiThread(activity) { () =>
         Toast.makeText(activity, "Please enable 'WiFi direct', then go back...", Toast.LENGTH_SHORT).show
       }
