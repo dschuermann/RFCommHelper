@@ -87,8 +87,7 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
   private val TAG = "RFCommHelper"
   private val D = true
 
-  private val REQUEST_ENABLE_BT = 1
-//private val REQUEST_SELECT_PAIRED_DEVICE_AND_CONNECT_TO = 2
+  private val REQUEST_ENABLE_BT = 101
 
   var rfCommService:RFCommHelperService = null    // activity calls stopActiveConnection -> mConnectThread.cancel
   var p2pConnected = false    // set and cleared in WiFiDirectBroadcastReceiver
@@ -100,6 +99,7 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
   var desiredBluetooth = false
   var desiredWifiDirect = false
   var desiredNfc = false
+  var wifiP2pManager:WifiP2pManager = null
 
   private var activityDestroyed = false
   private var activityResumed = false
@@ -113,7 +113,6 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
   private var mBluetoothAdapter:BluetoothAdapter = null
 //private var radioTypeSelected = false
   private var radioDialogPossibleAndNotYetShown = false
-  private var wifiP2pManager:WifiP2pManager = null
   private var wifiDirectBroadcastReceiver:BroadcastReceiver = null
 
   private val intentFilter = new IntentFilter()
@@ -222,164 +221,150 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
       }
   }
   
-  // dynamically create a dialog box (not inflated from xml)
+  // dynamically created dialog box (not inflated from xml)
   def radioDialog(backKeyIsExit:Boolean) {
     if(D) Log.i(TAG, "radioDialog()")
     if(activityDestroyed) {
       if(D) Log.i(TAG, "radioDialog aborted because: activityDestroyed="+activityDestroyed)
       return
     }
-/*
-    if(!radioTypeSelected) {
-*/
-      // user did not yet see the dialog, offer the dialog to turn all wanted radio on
-      val radioSelectDialogBuilder = new AlertDialog.Builder(activity)
-      radioSelectDialogBuilder.setTitle("Radio selection")
-      // todo: use a nice fancy "radio wave" background ?
 
-      val radioSelectDialogLayout = new LinearLayout(activity)
-      radioSelectDialogLayout.setLayoutParams(new LinearLayout.LayoutParams(LayoutParams.FILL_PARENT, LayoutParams.FILL_PARENT))
-      radioSelectDialogLayout.setPadding(40, 40, 40, 40)
-      radioSelectDialogLayout.setOrientation(LinearLayout.VERTICAL)
+    // user did not yet see the dialog, offer the dialog to turn all wanted radio on
+    val radioSelectDialogBuilder = new AlertDialog.Builder(activity)
+    radioSelectDialogBuilder.setTitle("Radio selection")
+    // todo: use a nice fancy "radio wave" background ?
 
-      val radioBluetoothCheckbox = new CheckBox(activity)
-      if((radioTypeWanted&RFCommHelper.RADIO_BT)!=0) {
-        radioBluetoothCheckbox.setText("Bluetooth not available")
-        radioBluetoothCheckbox.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP,19.0f)
-        if(mBluetoothAdapter==null)
-          radioBluetoothCheckbox.setEnabled(false)    // disable if bt-hardware is not available
-        else {
-          radioBluetoothCheckbox.setText("Bluetooth (off)")
-          if(mBluetoothAdapter.isEnabled)
-            radioBluetoothCheckbox.setText("Bluetooth")
-          radioBluetoothCheckbox.setChecked(desiredBluetooth)
-        }
-        radioSelectDialogLayout.addView(radioBluetoothCheckbox)
+    val radioSelectDialogLayout = new LinearLayout(activity)
+    radioSelectDialogLayout.setLayoutParams(new LinearLayout.LayoutParams(LayoutParams.FILL_PARENT, LayoutParams.FILL_PARENT))
+    radioSelectDialogLayout.setPadding(40, 40, 40, 40)
+    radioSelectDialogLayout.setOrientation(LinearLayout.VERTICAL)
+
+    val radioBluetoothCheckbox = new CheckBox(activity)
+    if((radioTypeWanted&RFCommHelper.RADIO_BT)!=0) {
+      radioBluetoothCheckbox.setText("Bluetooth not available")
+      radioBluetoothCheckbox.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP,19.0f)
+      if(mBluetoothAdapter==null)
+        radioBluetoothCheckbox.setEnabled(false)    // disable if bt-hardware is not available
+      else {
+        radioBluetoothCheckbox.setText("Bluetooth (off)")
+        if(mBluetoothAdapter.isEnabled)
+          radioBluetoothCheckbox.setText("Bluetooth")
+        radioBluetoothCheckbox.setChecked(desiredBluetooth)
       }
-      
-      val radioWifiDirectCheckbox = new CheckBox(activity)
-      if((radioTypeWanted&RFCommHelper.RADIO_P2PWIFI)!=0) {
-/*
-        // the app want's to use p2pWifi, if it is supported on this device
-        // however, we need to wait a little for wifiDirectBroadcastReceiver to call our setIsWifiP2pEnabled() method
-        // so we know if isWifiP2pEnabled is true
-        // note: we can sleep here, since we are runing in a separate thread
-        if(D) Log.i(TAG, "radioDialog little sleep to find out about the state of isWifiP2pEnabled="+isWifiP2pEnabled)
-        try { Thread.sleep(500) } catch { case ex:Exception => }
-        if(D) Log.i(TAG, "radioDialog little sleep to find out about the state of isWifiP2pEnabled="+isWifiP2pEnabled+" DONE ##############")
-*/        
-        radioWifiDirectCheckbox.setText("WiFi Direct not available")
-        radioWifiDirectCheckbox.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP,19.0f)
-        if(wifiP2pManager==null || android.os.Build.VERSION.SDK_INT<14)
-          radioWifiDirectCheckbox.setEnabled(false)   // disable if wifip2p-hardware is not available
-        else {
-          radioWifiDirectCheckbox.setText("WiFi Direct (off)")
-          if(isWifiP2pEnabled)    // todo tmtmtm: on start this is NOT set true, even though p2pWifi IS enabled
-            radioWifiDirectCheckbox.setText("WiFi Direct")
-          radioWifiDirectCheckbox.setChecked(desiredWifiDirect)
-        }
-        radioSelectDialogLayout.addView(radioWifiDirectCheckbox)
-      }
-
-      val radioNfcCheckbox = new CheckBox(activity)
-      if((radioTypeWanted&RFCommHelper.RADIO_NFC)!=0) {
-        radioNfcCheckbox.setText("NFC not available")
-        radioNfcCheckbox.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP,19.0f)
-        if(mNfcAdapter==null || android.os.Build.VERSION.SDK_INT<10)
-          radioNfcCheckbox.setEnabled(false)          // disable if nfc-hardware is not available
-        else {
-          radioNfcCheckbox.setText("NFC (off)")
-          if(mNfcAdapter.isEnabled)
-            radioNfcCheckbox.setText("NFC")
-          radioNfcCheckbox.setChecked(desiredNfc)
-        }
-        radioSelectDialogLayout.addView(radioNfcCheckbox)
-      }
-
-      radioSelectDialogBuilder.setView(radioSelectDialogLayout)
-
-      val backKeyLabel = if(backKeyIsExit) "Exit" else "Close"
-      radioSelectDialogBuilder.setNegativeButton(backKeyLabel, new DialogInterface.OnClickListener() {
-        def onClick(dialogInterface:DialogInterface, m:Int) {
-          // persist desired-flags
-          storeRadioSelection(radioBluetoothCheckbox.isChecked,radioWifiDirectCheckbox.isChecked,radioNfcCheckbox.isChecked)
-          if(backKeyIsExit)
-            activity.finish
-        }
-      })
-
-      radioSelectDialogBuilder.setPositiveButton("OK", new DialogInterface.OnClickListener() {
-        def onClick(dialogInterface:DialogInterface, m:Int) {
-          // this is just to create the OK button
-          // evaluation is found below under setOnShowListener()/onClick()
-        }
-      })
-
-      if(backKeyIsExit)
-        radioSelectDialogBuilder.setOnKeyListener(new DialogInterface.OnKeyListener() {
-          override def onKey(dialogInterface:DialogInterface, keyCode:Int, keyEvent:KeyEvent) :Boolean = {
-            if(keyCode == KeyEvent.KEYCODE_BACK && keyEvent.getAction()==KeyEvent.ACTION_UP /*&& !keyEvent.isCanceled()*/) {
-              if(D) Log.i(TAG, "radioDialog onKeyDown KEYCODE_BACK backKeyIsExit="+backKeyIsExit)
-              storeRadioSelection(radioBluetoothCheckbox.isChecked,radioWifiDirectCheckbox.isChecked,radioNfcCheckbox.isChecked)
-              if(backKeyIsExit)
-                activity.finish
-              return true
-            }
-            return false
-          }                   
-        })
-
-      AndrTools.runOnUiThread(activity) { () =>
-        val radioSelectDialog = radioSelectDialogBuilder.create
-        var alertReady = false
-        radioSelectDialog.setOnShowListener(new DialogInterface.OnShowListener() {
-          override def onShow(dialogInterface:DialogInterface) {
-            if(alertReady==false) {
-              val button = radioSelectDialog.getButton(DialogInterface.BUTTON_POSITIVE)
-              button.setOnClickListener(new View.OnClickListener() {
-                override def onClick(view:View) {
-                  // evaluate checkboxes and set desired booleans
-                  desiredBluetooth = radioBluetoothCheckbox.isChecked
-                  desiredWifiDirect = radioWifiDirectCheckbox.isChecked
-                  desiredNfc = radioNfcCheckbox.isChecked
-                  if(D) Log.i(TAG, "radioSelectDialog onClick desiredBluetooth="+desiredBluetooth+" desiredWifiDirect="+desiredWifiDirect+" desiredNfc="+desiredNfc)
-                  if(desiredBluetooth==false && desiredWifiDirect==false) {
-                    // we need at least 1 type of transport-radio
-                    if(msgFromServiceHandler!=null)
-                      msgFromServiceHandler.obtainMessage(RFCommHelperService.ALERT_MESSAGE, -1, -1, "No radio enabled for transport").sendToTarget
-                    else
-                      AndrTools.runOnUiThread(activity) { () =>
-                        Toast.makeText(activity, "No radio enabled for transport", Toast.LENGTH_SHORT).show
-                      }
-                    // we let the dialog stay open
-
-                  } else {
-                    //radioTypeSelected = true
-                    dialogInterface.cancel
-
-                    // persist desired-flags
-                    storeRadioSelection(desiredBluetooth,desiredWifiDirect,desiredNfc)
-                    initBtNfc  // start bt-accept-thread and init-nfc
-                    switchOnDesiredRadios  // open wireless settings and let user enable radio-hw
-                    radioDialogPossibleAndNotYetShown = false  // radioDialog will not again be shown on successive onResume's
-                  }
-                }
-              })
-              alertReady = true
-            }
-          }
-        })
-        radioSelectDialog.show
-      }
-/*
+      radioSelectDialogLayout.addView(radioBluetoothCheckbox)
     }
-*/
+    
+    val radioWifiDirectCheckbox = new CheckBox(activity)
+    if((radioTypeWanted&RFCommHelper.RADIO_P2PWIFI)!=0) {
+      radioWifiDirectCheckbox.setText("WiFi Direct not available")
+      radioWifiDirectCheckbox.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP,19.0f)
+      if(wifiP2pManager==null || android.os.Build.VERSION.SDK_INT<14)
+        radioWifiDirectCheckbox.setEnabled(false)   // disable if wifip2p-hardware is not available
+      else {
+        radioWifiDirectCheckbox.setText("WiFi Direct (off)")
+        if(isWifiP2pEnabled)    // todo tmtmtm: on start this is NOT set true, even though p2pWifi IS enabled
+          radioWifiDirectCheckbox.setText("WiFi Direct")
+        radioWifiDirectCheckbox.setChecked(desiredWifiDirect)
+      }
+      radioSelectDialogLayout.addView(radioWifiDirectCheckbox)
+    }
+
+    val radioNfcCheckbox = new CheckBox(activity)
+    if((radioTypeWanted&RFCommHelper.RADIO_NFC)!=0) {
+      radioNfcCheckbox.setText("NFC not available")
+      radioNfcCheckbox.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP,19.0f)
+      if(mNfcAdapter==null || android.os.Build.VERSION.SDK_INT<10)
+        radioNfcCheckbox.setEnabled(false)          // disable if nfc-hardware is not available
+      else {
+        radioNfcCheckbox.setText("NFC (off)")
+        if(mNfcAdapter.isEnabled)
+          radioNfcCheckbox.setText("NFC")
+        radioNfcCheckbox.setChecked(desiredNfc)
+      }
+      radioSelectDialogLayout.addView(radioNfcCheckbox)
+    }
+
+    radioSelectDialogBuilder.setView(radioSelectDialogLayout)
+
+    val backKeyLabel = if(backKeyIsExit) "Exit" else "Close"
+    radioSelectDialogBuilder.setNegativeButton(backKeyLabel, new DialogInterface.OnClickListener() {
+      def onClick(dialogInterface:DialogInterface, m:Int) {
+        // persist desired-flags
+        storeRadioSelection(radioBluetoothCheckbox.isChecked,radioWifiDirectCheckbox.isChecked,radioNfcCheckbox.isChecked)
+        if(backKeyIsExit)
+          activity.finish
+      }
+    })
+
+    radioSelectDialogBuilder.setPositiveButton("OK", new DialogInterface.OnClickListener() {
+      def onClick(dialogInterface:DialogInterface, m:Int) {
+        // this is just to create the OK button
+        // evaluation is found below under setOnShowListener()/onClick()
+      }
+    })
+
+    if(backKeyIsExit)
+      radioSelectDialogBuilder.setOnKeyListener(new DialogInterface.OnKeyListener() {
+        override def onKey(dialogInterface:DialogInterface, keyCode:Int, keyEvent:KeyEvent) :Boolean = {
+          if(keyCode == KeyEvent.KEYCODE_BACK && keyEvent.getAction()==KeyEvent.ACTION_UP /*&& !keyEvent.isCanceled()*/) {
+            if(D) Log.i(TAG, "radioDialog onKeyDown KEYCODE_BACK backKeyIsExit="+backKeyIsExit)
+            storeRadioSelection(radioBluetoothCheckbox.isChecked,radioWifiDirectCheckbox.isChecked,radioNfcCheckbox.isChecked)
+            if(backKeyIsExit)
+              activity.finish
+            return true
+          }
+          return false
+        }                   
+      })
+
+    AndrTools.runOnUiThread(activity) { () =>
+      val radioSelectDialog = radioSelectDialogBuilder.create
+      var alertReady = false
+      radioSelectDialog.setOnShowListener(new DialogInterface.OnShowListener() {
+        override def onShow(dialogInterface:DialogInterface) {
+          if(alertReady==false) {
+            val button = radioSelectDialog.getButton(DialogInterface.BUTTON_POSITIVE)
+            button.setOnClickListener(new View.OnClickListener() {
+              override def onClick(view:View) {
+                // evaluate checkboxes and set desired booleans
+                desiredBluetooth = radioBluetoothCheckbox.isChecked
+                desiredWifiDirect = radioWifiDirectCheckbox.isChecked
+                desiredNfc = radioNfcCheckbox.isChecked
+                if(D) Log.i(TAG, "radioSelectDialog onClick desiredBluetooth="+desiredBluetooth+" desiredWifiDirect="+desiredWifiDirect+" desiredNfc="+desiredNfc)
+                if(desiredBluetooth==false && desiredWifiDirect==false) {
+                  // we need at least 1 type of transport-radio
+                  if(msgFromServiceHandler!=null)
+                    msgFromServiceHandler.obtainMessage(RFCommHelperService.ALERT_MESSAGE, -1, -1, "No radio enabled for transport").sendToTarget
+                  else
+                    AndrTools.runOnUiThread(activity) { () =>
+                      Toast.makeText(activity, "No radio enabled for transport", Toast.LENGTH_SHORT).show
+                    }
+                  // we let the dialog stay open
+
+                } else {
+                  //radioTypeSelected = true
+                  dialogInterface.cancel
+
+                  // persist desired-flags
+                  storeRadioSelection(desiredBluetooth,desiredWifiDirect,desiredNfc)
+                  initBtNfc  // start bt-accept-thread and init-nfc
+                  switchOnDesiredRadios  // open wireless settings and let user enable radio-hw
+                  radioDialogPossibleAndNotYetShown = false  // radioDialog will not again be shown on successive onResume's
+                }
+              }
+            })
+            alertReady = true
+          }
+        }
+      })
+      radioSelectDialog.show
+    }
   }
 
   def onResume() {
     if(D) Log.i(TAG, "onResume mNfcAdapter="+mNfcAdapter+" wifiP2pManager="+wifiP2pManager+" isWifiP2pEnabled="+isWifiP2pEnabled)
 
-    if((radioTypeWanted&RFCommHelper.RADIO_NFC)!=0) {
+    if((radioTypeWanted&RFCommHelper.RADIO_NFC)!=0 && mNfcAdapter==null) {
       // find out if nfc hardware is supported (not necessarily on)
       if(android.os.Build.VERSION.SDK_INT>=10 && mNfcAdapter==null) {
         try {
@@ -398,7 +383,7 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
       }
     }
 
-    if((radioTypeWanted&RFCommHelper.RADIO_BT)!=0) {
+    if((radioTypeWanted&RFCommHelper.RADIO_BT)!=0 && mBluetoothAdapter==null) {
       // find out if bt-hardware is supported (not necessarily on)
       if(mBluetoothAdapter==null) {
         // get local Bluetooth adapter
@@ -412,7 +397,7 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
       }
     }
 
-    if((radioTypeWanted&RFCommHelper.RADIO_P2PWIFI)!=0) {
+    if((radioTypeWanted&RFCommHelper.RADIO_P2PWIFI)!=0 && wifiP2pManager==null) {
       // find out if wifi-direct is supported, if so initialze wifiP2pManager
       if(android.os.Build.VERSION.SDK_INT>=14 && wifiP2pManager==null) {
         wifiP2pManager = activity.getSystemService(Context.WIFI_P2P_SERVICE).asInstanceOf[WifiP2pManager]
@@ -487,26 +472,26 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
         // callback to disable foreground dispatch after it has been enabled. 
         AndrTools.runOnUiThread(activity) { () =>
           mNfcAdapter.enableForegroundDispatch(activity, nfcPendingIntent, nfcFilters, nfcTechLists)
-          if(D) Log.i(TAG, "onResume nfc enableForegroundDispatch done")
+          //if(D) Log.i(TAG, "onResume nfc enableForegroundDispatch done")
         }
       }
       if(nfcForegroundPushMessage!=null) {
-        //mNfcAdapter.enableForegroundNdefPush(activity, nfcForegroundPushMessage)
-        //if(D) Log.i(TAG, "onResume enableForegroundNdefPush done")
         mNfcAdapter.setNdefPushMessage(nfcForegroundPushMessage, activity)
-        if(D) Log.i(TAG, "onResume setNdefPushMessage done")
+        //if(D) Log.i(TAG, "onResume nfc setNdefPushMessage done")
       }
     }
 
     // set acceptAndConnect if possible / update mainViewUpdate if necessary
     if(rfCommService!=null) {
-      rfCommService.acceptAndConnect = true
-      // RFCommService will otherwise not answer incoming connect requests
-      if(D) Log.i(TAG, "onResume set rfCommService.acceptAndConnect="+rfCommService.acceptAndConnect)
+      if(rfCommService.acceptAndConnect==false) {
+        rfCommService.acceptAndConnect = true
+        // RFCommService will otherwise not answer incoming connect requests
+        if(D) Log.i(TAG, "onResume set rfCommService.acceptAndConnect="+rfCommService.acceptAndConnect)
 
-      // no! this undo's any visual activity (for instance the connect-progress animation)
-      //if(rfCommService.state!=RFCommHelperService.STATE_CONNECTED)    // ???
-      //  msgFromServiceHandler.obtainMessage(RFCommHelperService.UI_UPDATE, -1, -1).sendToTarget
+        // no! this undo's any visual activity (for instance the connect-progress animation)
+        //if(rfCommService.state!=RFCommHelperService.STATE_CONNECTED)    // ???
+        //  msgFromServiceHandler.obtainMessage(RFCommHelperService.UI_UPDATE, -1, -1).sendToTarget
+      }
     } else {
       Log.i(TAG, "onResume rfCommService==null, acceptAndConnect not set")
     }
@@ -597,7 +582,7 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
     activityDestroyed=true
   }
 
-  def getPairedDevices():java.util.ArrayList[String] = {
+  def getBtPairedDevices():java.util.ArrayList[String] = {
     val pairedDevicesArrayListOfStrings = new java.util.ArrayList[String]()
     if(mBluetoothAdapter!=null) {
       val pairedDevicesSet = mBluetoothAdapter.getBondedDevices
@@ -612,11 +597,11 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
         } else {
           val iterator = pairedDevicesArrayListOfBluetoothDevices.iterator 
           while(iterator.hasNext) {
-            val device = iterator.next
-            if(device!=null) {
-              //if(D) Log.i(TAG, "updateDevicesView ADD paired="+device.getName)
-              if(device.getName!=null && device.getName.size>0) {
-                pairedDevicesArrayListOfStrings.add(device.getName+"\n"+device.getAddress)
+            val bluetoothDevice = iterator.next
+            if(bluetoothDevice!=null) {
+              //if(D) Log.i(TAG, "updateDevicesView ADD paired="+bluetoothDevice.getName)
+              if(bluetoothDevice.getName!=null && bluetoothDevice.getName.size>0) {
+                pairedDevicesArrayListOfStrings.add(bluetoothDevice.getName+"\n"+bluetoothDevice.getAddress+" bt paired")
               }
             }
           }
@@ -624,6 +609,37 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
       }
     }
 
+    return pairedDevicesArrayListOfStrings
+  }
+
+  def getP2pWifiDevices():java.util.ArrayList[String] = {
+    val pairedDevicesArrayListOfStrings = new java.util.ArrayList[String]()
+/*
+    if(mBluetoothAdapter!=null) {
+      val pairedDevicesSet = mBluetoothAdapter.getBondedDevices
+      if(pairedDevicesSet.size>0) {
+		    // Create an ArrayAdapter that will make the Strings above appear in the ListView
+        val pairedDevicesArrayListOfBluetoothDevices = new ArrayList[BluetoothDevice](pairedDevicesSet)
+        if(pairedDevicesArrayListOfBluetoothDevices==null) {
+          Log.e(TAG, "getPairedDevices pairedDevicesArrayListOfBluetoothDevices==null")
+          AndrTools.runOnUiThread(activity) { () =>
+            Toast.makeText(activity, "Could not get pairedDevicesArrayListOfBluetoothDevices", Toast.LENGTH_LONG).show
+          }
+        } else {
+          val iterator = pairedDevicesArrayListOfBluetoothDevices.iterator 
+          while(iterator.hasNext) {
+            val bluetoothDevice = iterator.next
+            if(bluetoothDevice!=null) {
+              //if(D) Log.i(TAG, "updateDevicesView ADD paired="+bluetoothDevice.getName)
+              if(bluetoothDevice.getName!=null && bluetoothDevice.getName.size>0) {
+                pairedDevicesArrayListOfStrings.add(bluetoothDevice.getName+"\n"+bluetoothDevice.getAddress+" bt paired")
+              }
+            }
+          }
+        }
+      }
+    }
+*/
     return pairedDevicesArrayListOfStrings
   }
 
@@ -768,7 +784,7 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
   }
 
   def nfcServiceSetup() {
-    // this is called by radioDialog/onOK, by wifiDirectBroadcastReceiver:WIFI_P2P_THIS_DEVICE_CHANGED_ACTION and by onActivityResult:REQUEST_ENABLE_BT
+    // this is called by radioDialog/OK, by wifiDirectBroadcastReceiver:WIFI_P2P_THIS_DEVICE_CHANGED_ACTION and by onActivityResult:REQUEST_ENABLE_BT
 
     if(D) Log.i(TAG, "nfcServiceSetup mNfcAdapter="+mNfcAdapter+" ...")
 
