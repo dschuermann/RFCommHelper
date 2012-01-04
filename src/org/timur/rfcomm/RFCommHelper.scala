@@ -824,17 +824,19 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
   }
 
   def addAllDevicesUnregister() {
-    if(D) Log.i(TAG, "addAllDevicesUnregister")
+    //if(D) Log.i(TAG, "addAllDevicesUnregister")
     if(rfCommService!=null) {
+      // not interested anymore in wifi device discovery
       if(rfCommService.p2pWifiDiscoveredCallbackFkt!=null) {
         if(D) Log.i(TAG, "addAllDevicesUnregister rfCommService.callbackFkt=null")
         rfCommService.p2pWifiDiscoveredCallbackFkt = null
       }
-      if(mBluetoothAdapter!=null) {
-        if(D) Log.i(TAG, "addAllDevicesUnregister mBluetoothAdapter.cancelDiscovery")
-        mBluetoothAdapter.cancelDiscovery
-      }
+      // not interested anymore in bt device discovery
       if(btBroadcastReceiver!=null) {
+        if(mBluetoothAdapter!=null) {
+          if(D) Log.i(TAG, "addAllDevicesUnregister mBluetoothAdapter.cancelDiscovery")
+          mBluetoothAdapter.cancelDiscovery
+        }
         if(D) Log.i(TAG, "addAllDevicesUnregister activity.unregisterReceiver")
         if(activity!=null)
           activity.unregisterReceiver(btBroadcastReceiver)

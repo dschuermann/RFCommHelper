@@ -111,19 +111,19 @@ object RFCommHelperService {
 
 class RFCommHelperService extends android.app.Service {
   // public objects
-  var activity:Activity = null              // set by activity on new ServiceConnection()
+  var activity:Activity = null            // set by activity on new ServiceConnection()
   var activityMsgHandler:Handler = null   // set by activity on new ServiceConnection()
   var appService:RFServiceTrait = null
   @volatile var acceptAndConnect = true   // set by activity on onPause/onResume: false = activity is sleeping, don't accept incoming connect requests
   @volatile var state = RFCommHelperService.STATE_NONE  // retrieved by activity
+  @volatile var p2pWifiDiscoveredCallbackFkt:(WifiP2pDevice) => Unit = null
   var connectedRadio:Int = 0
   val wifiP2pDeviceArrayList = new ArrayList[WifiP2pDevice]()
-  var p2pWifiDiscoveredCallbackFkt:(WifiP2pDevice) => Unit = null
   var discoveringPeersInProgress = false  // so we do not call discoverPeers() again while it is active still
-  var isWifiP2pEnabled = false    // if false in onResume, we will offer ACTION_WIRELESS_SETTINGS 
-  var p2pConnected = false    // set and cleared in WiFiDirectBroadcastReceiver
+  var isWifiP2pEnabled = false            // if false in onResume, we will offer ACTION_WIRELESS_SETTINGS 
+  var p2pConnected = false                // set and cleared in WiFiDirectBroadcastReceiver
   var p2pChannel:Channel = null
-  var localP2pWifiAddr:String = null   // set and used in WiFiDirectBroadcastReceiver
+  var localP2pWifiAddr:String = null      // set and used in WiFiDirectBroadcastReceiver
   var mNfcAdapter:NfcAdapter = null
   var nfcPendingIntent:PendingIntent = null
   var nfcFilters:Array[IntentFilter] = null
@@ -149,10 +149,9 @@ class RFCommHelperService extends android.app.Service {
   private val mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter
   private var myBtName = if(mBluetoothAdapter!=null) mBluetoothAdapter.getName else null
   private var myBtAddr = if(mBluetoothAdapter!=null) mBluetoothAdapter.getAddress else null
-
-  if(D) Log.i(TAG, "constructor myBtName="+myBtName+" myBtAddr="+myBtAddr+" mBluetoothAdapter="+mBluetoothAdapter+" ################################")
-  //@volatile private var sendMsgCounter:Long = 0
   @volatile private var mConnectThread:ConnectThread = null
+
+  if(D) Log.i(TAG, "constructor myBtName="+myBtName+" myBtAddr="+myBtAddr+" mBluetoothAdapter="+mBluetoothAdapter)
   private var blobTaskId = 0
 
   class LocalBinder extends android.os.Binder {
@@ -493,9 +492,11 @@ class RFCommHelperService extends android.app.Service {
         try {
           synchronized {
             socket = null
-            if(mmServerSocket!=null)
+            if(mmServerSocket!=null) {
               // This is a blocking call and will only return on a successful connection or an exception
               socket = mmServerSocket.accept
+              if(D) Log.i(TAG, "AcceptThread run loop after accept, socket="+socket+" ################")
+            }
           }
         } catch {
           case ioex: IOException =>
@@ -615,8 +616,8 @@ class RFCommHelperService extends android.app.Service {
 
       try {
         // This is a blocking call and will only return on a successful connection or an exception
-        if(D) Log.i(TAG, "ConnectThread run connect()")
-        mmSocket.connect()
+        if(D) Log.i(TAG, "ConnectThread run mmSocket.connect()")
+        mmSocket.connect
       } catch {
         case ex:IOException =>
           Log.e(TAG, "ConnectThread run unable to connect() "+mSocketType+" IOException",ex)
