@@ -1,0 +1,6 @@
+local.properties
+bin/
+gen/
+AndroidManifest.xml
+maker
+
