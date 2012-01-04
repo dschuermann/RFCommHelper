@@ -17,7 +17,6 @@ import android.util.Log
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.content.IntentFilter.MalformedMimeTypeException
 import android.content.SharedPreferences
 import android.content.ServiceConnection
 import android.content.ComponentName
@@ -27,7 +26,6 @@ import android.app.Activity
 import android.app.ActivityManager
 import android.app.AlertDialog
 import android.app.AlertDialog.Builder
-import android.app.PendingIntent
 import android.os.IBinder
 import android.os.Environment
 import android.os.Handler
@@ -44,11 +42,7 @@ import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams
 
 import android.nfc.NfcAdapter
-import android.nfc.tech.NfcF
-import android.nfc.NdefMessage
-import android.nfc.NdefRecord
-import java.nio.charset.Charset
-import java.util.Locale
+//import java.nio.charset.Charset
 
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
@@ -80,7 +74,7 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
                    prefSettings:SharedPreferences = null, prefSettingsEditor:SharedPreferences.Editor = null,
                    allOK:() => Unit, allFailed:() => Unit, 
                    appService:RFServiceTrait,
-                   val activityRuntimeClass:java.lang.Class[Activity],
+                   activityRuntimeClass:java.lang.Class[Activity],
                    audioConfirmSound:MediaPlayer,
                    radioTypeWanted:Int) {
 
@@ -90,26 +84,26 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
   private val REQUEST_ENABLE_BT = 101
 
   var rfCommService:RFCommHelperService = null    // activity calls stopActiveConnection -> mConnectThread.cancel
-  var p2pConnected = false    // set and cleared in WiFiDirectBroadcastReceiver
-  var p2pChannel:Channel = null
-  var localP2pWifiAddr:String = null   // set and used in WiFiDirectBroadcastReceiver
+//var p2pConnected = false    // set and cleared in WiFiDirectBroadcastReceiver
+//var p2pChannel:Channel = null
+//var localP2pWifiAddr:String = null   // set and used in WiFiDirectBroadcastReceiver
+//private var isWifiP2pEnabled = false    // if false in onResume, we will offer ACTION_WIRELESS_SETTINGS 
+//private var mNfcAdapter:NfcAdapter = null
+//private var nfcPendingIntent:PendingIntent = null
+//private var nfcFilters:Array[IntentFilter] = null
+//private var nfcTechLists:Array[Array[String]] = null
+//private var activityResumed = false
+//private var nfcForegroundPushMessage:NdefMessage = null
+//var desiredBluetooth = false
+//var desiredWifiDirect = false
+//var desiredNfc = false
+
   var connectAttemptFromNfc = false
-  var desiredBluetooth = false
-  var desiredWifiDirect = false
-  var desiredNfc = false
   var wifiP2pManager:WifiP2pManager = null
 
   private var activityDestroyed = false
-  private var activityResumed = false
 
-  private var isWifiP2pEnabled = false    // if false in onResume, we will offer ACTION_WIRELESS_SETTINGS 
-  private var mNfcAdapter:NfcAdapter = null
-  private var nfcPendingIntent:PendingIntent = null
-  private var nfcFilters:Array[IntentFilter] = null
-  private var nfcTechLists:Array[Array[String]] = null
-  private var nfcForegroundPushMessage:NdefMessage = null
-  private var mBluetoothAdapter:BluetoothAdapter = null
-//private var radioTypeSelected = false
+  var mBluetoothAdapter:BluetoothAdapter = null
   private var radioDialogPossibleAndNotYetShown = false
   private var wifiDirectBroadcastReceiver:BroadcastReceiver = null
 
@@ -119,15 +113,6 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
     intentFilter.addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION)
     intentFilter.addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION)
     intentFilter.addAction(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION)
-  }
-
-  if(prefSettings!=null) {
-    if((radioTypeWanted & RFCommHelper.RADIO_BT)!=0)
-      desiredBluetooth = prefSettings.getBoolean("radioBluetooth", true)
-    if((radioTypeWanted & RFCommHelper.RADIO_P2PWIFI)!=0)
-      desiredWifiDirect = prefSettings.getBoolean("radioWifiDirect", true)
-    if((radioTypeWanted & RFCommHelper.RADIO_NFC)!=0)
-      desiredNfc = prefSettings.getBoolean("radioNfc", true)
   }
 
 
@@ -155,10 +140,24 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
           }
         return
       }
+
+      // we got connected to rfCommService
+
       if(D) Log.i(TAG, "onCreate onServiceConnected got rfCommService object")
       rfCommService.activity = activity
+      rfCommService.activityRuntimeClass = activityRuntimeClass
       rfCommService.activityMsgHandler = msgFromServiceHandler
       rfCommService.appService = appService
+
+      if(prefSettings!=null) {
+        if((radioTypeWanted & RFCommHelper.RADIO_BT)!=0)
+          rfCommService.desiredBluetooth = prefSettings.getBoolean("radioBluetooth", true)
+        if((radioTypeWanted & RFCommHelper.RADIO_P2PWIFI)!=0)
+          rfCommService.desiredWifiDirect = prefSettings.getBoolean("radioWifiDirect", true)
+        if((radioTypeWanted & RFCommHelper.RADIO_NFC)!=0)
+          rfCommService.desiredNfc = prefSettings.getBoolean("radioNfc", true)
+      }
+
       // everything is OK!
       allOK()
     } 
@@ -171,17 +170,6 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
   } else {
     Log.e(TAG, "onCreate bindService failed")
     allFailed()
-  }
-
-
-  // called by wifiDirectBroadcastReceiver #(1)
-  def setIsWifiP2pEnabled(setIsWifiP2pEnabled:Boolean) {
-    Log.i(TAG, "setIsWifiP2pEnabled="+setIsWifiP2pEnabled)
-    if(isWifiP2pEnabled != setIsWifiP2pEnabled) {
-      isWifiP2pEnabled = setIsWifiP2pEnabled
-      if(!isWifiP2pEnabled)
-        p2pConnected = false
-    }    
   }
 
   def initBtNfc() {
@@ -201,9 +189,9 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
     }
 
     // initialize nfc
-    if(mNfcAdapter!=null && mNfcAdapter.isEnabled) {
+    if(rfCommService.mNfcAdapter!=null && rfCommService.mNfcAdapter.isEnabled) {
       if(D) Log.i(TAG, "initBtNfc -> nfcServiceSetup")
-      nfcServiceSetup
+      rfCommService.nfcServiceSetup
     }
   }
 
@@ -247,7 +235,7 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
         radioBluetoothCheckbox.setText("Bluetooth (off)")
         if(mBluetoothAdapter.isEnabled)
           radioBluetoothCheckbox.setText("Bluetooth")
-        radioBluetoothCheckbox.setChecked(desiredBluetooth)
+        radioBluetoothCheckbox.setChecked(rfCommService.desiredBluetooth)
       }
       radioSelectDialogLayout.addView(radioBluetoothCheckbox)
     }
@@ -260,9 +248,9 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
         radioWifiDirectCheckbox.setEnabled(false)   // disable if wifip2p-hardware is not available
       else {
         radioWifiDirectCheckbox.setText("WiFi Direct (off)")
-        if(isWifiP2pEnabled)    // todo tmtmtm: on start this is NOT set true, even though p2pWifi IS enabled
+        if(rfCommService.isWifiP2pEnabled)
           radioWifiDirectCheckbox.setText("WiFi Direct")
-        radioWifiDirectCheckbox.setChecked(desiredWifiDirect)
+        radioWifiDirectCheckbox.setChecked(rfCommService.desiredWifiDirect)
       }
       radioSelectDialogLayout.addView(radioWifiDirectCheckbox)
     }
@@ -271,13 +259,13 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
     if((radioTypeWanted&RFCommHelper.RADIO_NFC)!=0) {
       radioNfcCheckbox.setText("NFC not available")
       radioNfcCheckbox.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP,19.0f)
-      if(mNfcAdapter==null || android.os.Build.VERSION.SDK_INT<10)
+      if(rfCommService.mNfcAdapter==null || android.os.Build.VERSION.SDK_INT<10)
         radioNfcCheckbox.setEnabled(false)          // disable if nfc-hardware is not available
       else {
         radioNfcCheckbox.setText("NFC (off)")
-        if(mNfcAdapter.isEnabled)
+        if(rfCommService.mNfcAdapter.isEnabled)
           radioNfcCheckbox.setText("NFC")
-        radioNfcCheckbox.setChecked(desiredNfc)
+        radioNfcCheckbox.setChecked(rfCommService.desiredNfc)
       }
       radioSelectDialogLayout.addView(radioNfcCheckbox)
     }
@@ -325,11 +313,11 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
             button.setOnClickListener(new View.OnClickListener() {
               override def onClick(view:View) {
                 // evaluate checkboxes and set desired booleans
-                desiredBluetooth = radioBluetoothCheckbox.isChecked
-                desiredWifiDirect = radioWifiDirectCheckbox.isChecked
-                desiredNfc = radioNfcCheckbox.isChecked
-                if(D) Log.i(TAG, "radioSelectDialog onClick desiredBluetooth="+desiredBluetooth+" desiredWifiDirect="+desiredWifiDirect+" desiredNfc="+desiredNfc)
-                if(desiredBluetooth==false && desiredWifiDirect==false) {
+                rfCommService.desiredBluetooth = radioBluetoothCheckbox.isChecked
+                rfCommService.desiredWifiDirect = radioWifiDirectCheckbox.isChecked
+                rfCommService.desiredNfc = radioNfcCheckbox.isChecked
+                if(D) Log.i(TAG, "radioSelectDialog onClick desiredBluetooth="+rfCommService.desiredBluetooth+" desiredWifiDirect="+rfCommService.desiredWifiDirect+" desiredNfc="+rfCommService.desiredNfc)
+                if(rfCommService.desiredBluetooth==false && rfCommService.desiredWifiDirect==false) {
                   // we need at least 1 type of transport-radio
                   if(msgFromServiceHandler!=null)
                     msgFromServiceHandler.obtainMessage(RFCommHelperService.ALERT_MESSAGE, -1, -1, "No radio enabled for transport").sendToTarget
@@ -340,11 +328,10 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
                   // we let the dialog stay open
 
                 } else {
-                  //radioTypeSelected = true
                   dialogInterface.cancel
 
                   // persist desired-flags
-                  storeRadioSelection(desiredBluetooth,desiredWifiDirect,desiredNfc)
+                  storeRadioSelection(rfCommService.desiredBluetooth,rfCommService.desiredWifiDirect,rfCommService.desiredNfc)
                   initBtNfc  // start bt-accept-thread and init-nfc
                   switchOnDesiredRadios  // open wireless settings and let user enable radio-hw
                   radioDialogPossibleAndNotYetShown = false  // radioDialog will not again be shown on successive onResume's
@@ -360,21 +347,21 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
   }
 
   def onResume() {
-    if(D) Log.i(TAG, "onResume mNfcAdapter="+mNfcAdapter+" wifiP2pManager="+wifiP2pManager+" isWifiP2pEnabled="+isWifiP2pEnabled)
+    if(D) Log.i(TAG, "onResume mNfcAdapter="+rfCommService.mNfcAdapter+" wifiP2pManager="+wifiP2pManager+" isWifiP2pEnabled="+rfCommService.isWifiP2pEnabled)
 
-    if((radioTypeWanted&RFCommHelper.RADIO_NFC)!=0 && mNfcAdapter==null) {
+    if((radioTypeWanted&RFCommHelper.RADIO_NFC)!=0 && rfCommService.mNfcAdapter==null) {
       // find out if nfc hardware is supported (not necessarily on)
-      if(android.os.Build.VERSION.SDK_INT>=10 && mNfcAdapter==null) {
+      if(android.os.Build.VERSION.SDK_INT>=10 && rfCommService.mNfcAdapter==null) {
         try {
-          mNfcAdapter = NfcAdapter.getDefaultAdapter(activity)
-          if(D) Log.i(TAG, "onResume mNfcAdapter="+mNfcAdapter)
+          rfCommService.mNfcAdapter = NfcAdapter.getDefaultAdapter(activity)
+          if(D) Log.i(TAG, "onResume mNfcAdapter="+rfCommService.mNfcAdapter)
           // continue to setup nfc in nfcServiceSetup()
         } catch {
           case ncdferr:java.lang.NoClassDefFoundError =>
             Log.e(TAG, "onResume NfcAdapter.getDefaultAdapter(this) failed "+ncdferr)
         }
       }
-      if(mNfcAdapter!=null) {
+      if(rfCommService.mNfcAdapter!=null) {
         if(D) Log.i(TAG, "onResume nfc supported")
       } else {
         if(D) Log.i(TAG, "onResume nfc not supported")
@@ -403,8 +390,8 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
           // register p2pChannel and wifiDirectBroadcastReceiver
           // note: this will result in a call to setIsWifiP2pEnabled(), so we know wether p2pWifi is already activated!
           if(D) Log.i(TAG, "onResume wifiP2p is supported, initialze p2pChannel and register wifiDirectBroadcastReceiver")
-          p2pChannel = wifiP2pManager.initialize(activity, activity.getMainLooper, null)
-          wifiDirectBroadcastReceiver = rfCommService.newWiFiDirectBroadcastReceiver(wifiP2pManager, this, rfCommService)
+          rfCommService.p2pChannel = wifiP2pManager.initialize(activity, activity.getMainLooper, null)
+          wifiDirectBroadcastReceiver = rfCommService.newWiFiDirectBroadcastReceiver(wifiP2pManager)
           activity.registerReceiver(wifiDirectBroadcastReceiver, intentFilter)
         }
       }
@@ -416,21 +403,21 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
     if(radioDialogPossibleAndNotYetShown) {
       // if all desired radio is already on, we don't need to show the radio dialog
 
-      if((radioTypeWanted&RFCommHelper.RADIO_P2PWIFI)!=0 && wifiP2pManager!=null && !isWifiP2pEnabled) {
+      if((radioTypeWanted&RFCommHelper.RADIO_P2PWIFI)!=0 && wifiP2pManager!=null && !rfCommService.isWifiP2pEnabled) {
         // the app want's to use p2pWifi, if it is supported by this device
         // however, we need to wait a little for wifiDirectBroadcastReceiver to call our setIsWifiP2pEnabled() method, so we know if isWifiP2pEnabled is true
         // if isWifiP2pEnabled is true, we might not need to show the radio-select dialog
-        if(D) Log.i(TAG, "onResume little sleep to find out about the state of isWifiP2pEnabled="+isWifiP2pEnabled)
+        if(D) Log.i(TAG, "onResume little sleep to find out about the state of isWifiP2pEnabled="+rfCommService.isWifiP2pEnabled)
         try { Thread.sleep(300) } catch { case ex:Exception => }
-        if(D) Log.i(TAG, "onResume little sleep to find out about the state of isWifiP2pEnabled="+isWifiP2pEnabled+" DONE ##############")
+        if(D) Log.i(TAG, "onResume little sleep to find out about the state of isWifiP2pEnabled="+rfCommService.isWifiP2pEnabled+" DONE ##############")
       }
 
       var radioDialogNeeded = false
       if((radioTypeWanted&RFCommHelper.RADIO_BT)!=0 && mBluetoothAdapter!=null && !mBluetoothAdapter.isEnabled)
         radioDialogNeeded = true
-      if((radioTypeWanted&RFCommHelper.RADIO_P2PWIFI)!=0 && wifiP2pManager!=null && !isWifiP2pEnabled)
+      if((radioTypeWanted&RFCommHelper.RADIO_P2PWIFI)!=0 && wifiP2pManager!=null && !rfCommService.isWifiP2pEnabled)
         radioDialogNeeded = true
-      if((radioTypeWanted&RFCommHelper.RADIO_NFC)!=0 && mNfcAdapter!=null && !mNfcAdapter.isEnabled)
+      if((radioTypeWanted&RFCommHelper.RADIO_NFC)!=0 && rfCommService.mNfcAdapter!=null && !rfCommService.mNfcAdapter.isEnabled)
         radioDialogNeeded = true
       if(radioDialogNeeded) {
         // show the radio dialog
@@ -446,11 +433,11 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
 
         // prepare desired-switches for use with ACTION_NDEF_DISCOVERED
         if((radioTypeWanted & RFCommHelper.RADIO_BT)!=0)
-          desiredBluetooth = true
+          rfCommService.desiredBluetooth = true
         if((radioTypeWanted & RFCommHelper.RADIO_P2PWIFI)!=0)
-          desiredWifiDirect = true
+          rfCommService.desiredWifiDirect = true
         if((radioTypeWanted & RFCommHelper.RADIO_NFC)!=0)
-          desiredNfc = true
+          rfCommService.desiredNfc = true
       }
     } else {
       new Thread() {
@@ -463,18 +450,18 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
       }.start
     }
 
-    if(mNfcAdapter!=null && mNfcAdapter.isEnabled) {
-      if(nfcPendingIntent!=null) {
+    if(rfCommService.mNfcAdapter!=null && rfCommService.mNfcAdapter.isEnabled) {
+      if(rfCommService.nfcPendingIntent!=null) {
         // This method must be called from the main thread, and only when the activity is in the foreground (resumed). 
         // Also, activities must call disableForegroundDispatch(Activity) before the completion of their onPause() 
         // callback to disable foreground dispatch after it has been enabled. 
         AndrTools.runOnUiThread(activity) { () =>
-          mNfcAdapter.enableForegroundDispatch(activity, nfcPendingIntent, nfcFilters, nfcTechLists)
+          rfCommService.mNfcAdapter.enableForegroundDispatch(activity, rfCommService.nfcPendingIntent, rfCommService.nfcFilters, rfCommService.nfcTechLists)
           //if(D) Log.i(TAG, "onResume nfc enableForegroundDispatch done")
         }
       }
-      if(nfcForegroundPushMessage!=null) {
-        mNfcAdapter.setNdefPushMessage(nfcForegroundPushMessage, activity)
+      if(rfCommService.nfcForegroundPushMessage!=null) {
+        rfCommService.mNfcAdapter.setNdefPushMessage(rfCommService.nfcForegroundPushMessage, activity)
         //if(D) Log.i(TAG, "onResume nfc setNdefPushMessage done")
       }
     }
@@ -494,11 +481,11 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
       Log.i(TAG, "onResume rfCommService==null, acceptAndConnect not set")
     }
 
-    activityResumed = true
+    rfCommService.activityResumed = true
   }
 
   def onPause() {
-    activityResumed = false
+    rfCommService.activityResumed = false
     if(D) Log.i(TAG, "onPause...")
 
 /*
@@ -512,14 +499,10 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
           if(D) Log.i(TAG, "onPause delayed activityResumed not set !!!!!!!!!!!!!!")
 */
           AndrTools.runOnUiThread(activity) { () =>
-            if(mNfcAdapter!=null && mNfcAdapter.isEnabled) {
-              mNfcAdapter.disableForegroundDispatch(activity)
-              if(nfcForegroundPushMessage!=null) {
-                //mNfcAdapter.disableForegroundNdefPush(activity)
-                //if(D) Log.i(TAG, "onPause disableForegroundNdefPush done")
-                mNfcAdapter.setNdefPushMessage(null, activity)
-                if(D) Log.i(TAG, "onPause setNdefPushMessage null done")
-              }
+            if(rfCommService.mNfcAdapter!=null && rfCommService.mNfcAdapter.isEnabled) {
+              rfCommService.mNfcAdapter.disableForegroundDispatch(activity)
+              rfCommService.mNfcAdapter.setNdefPushMessage(null, activity)
+              if(D) Log.i(TAG, "onPause setNdefPushMessage null done")
             }
 
             if(rfCommService!=null) {
@@ -559,9 +542,9 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
       activity.unregisterReceiver(wifiDirectBroadcastReceiver)
     }
 
-    if(wifiP2pManager!=null && p2pChannel!=null) {
+    if(wifiP2pManager!=null && rfCommService.p2pChannel!=null) {
       if(D) Log.i(TAG, "onDestroy wifiP2pManager.removeGroup")
-      wifiP2pManager.removeGroup(p2pChannel, new ActionListener() {
+      wifiP2pManager.removeGroup(rfCommService.p2pChannel, new ActionListener() {
         override def onSuccess() {
           if(D) Log.i(TAG, "onDestroy wifiP2pManager.removeGroup() success")
           // wifiDirectBroadcastReceiver will notify us
@@ -572,7 +555,7 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
           // reason ERROR=0, P2P_UNSUPPORTED=1, BUSY=2
         }
       })
-      p2pConnected = false  // maybe not necessary
+      rfCommService.p2pConnected = false  // maybe not necessary
       //p2pChannel = null
       //wifiP2pManager = null
     }
@@ -643,19 +626,19 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
 
   def onNewIntent(intent:Intent) :Boolean = {
     // all sort of intents may arrive here... for instance ACTION_NDEF_DISCOVERED
-    if(D) Log.i(TAG, "onNewIntent intent="+intent+" intent.getAction="+intent.getAction+" mNfcAdapter="+mNfcAdapter)
+    if(D) Log.i(TAG, "onNewIntent intent="+intent+" intent.getAction="+intent.getAction+" mNfcAdapter="+rfCommService.mNfcAdapter)
 
     // we are interested in nfc-intents (ACTION_NDEF_DISCOVERED)
-    if(android.os.Build.VERSION.SDK_INT>=10 && mNfcAdapter!=null && intent.getAction==NfcAdapter.ACTION_NDEF_DISCOVERED) {
+    if(android.os.Build.VERSION.SDK_INT>=10 && rfCommService.mNfcAdapter!=null && intent.getAction==NfcAdapter.ACTION_NDEF_DISCOVERED) {
       val ncfActionString = NfcHelper.checkForNdefAction(activity, intent)
-      if(D) Log.i(TAG, "onNewIntent NfcEnabled="+mNfcAdapter.isEnabled+" ncfActionString="+ncfActionString+" desiredWifiDirect="+desiredWifiDirect+" desiredBluetooth="+desiredBluetooth)
-      if(mNfcAdapter.isEnabled && ncfActionString!=null) {
+      if(D) Log.i(TAG, "onNewIntent NfcEnabled="+rfCommService.mNfcAdapter.isEnabled+" ncfActionString="+ncfActionString+" desiredWifiDirect="+rfCommService.desiredWifiDirect+" desiredBluetooth="+rfCommService.desiredBluetooth)
+      if(rfCommService.mNfcAdapter.isEnabled && ncfActionString!=null) {
         // this is a nfc-intent, ncfActionString may look something like this: "bt=xxyyzzxxyyzz|p2pWifi=xx:yy:zz:xx:yy:zz"
         val idxP2p = ncfActionString.indexOf("p2pWifi=")
         val idxBt = ncfActionString.indexOf("bt=")
         //if(D) Log.i(TAG, "onNewIntent idxP2p="+idxP2p+" idxBt="+idxBt+" mBluetoothAdapter="+mBluetoothAdapter)
 
-        if(wifiP2pManager!=null && desiredWifiDirect && idxP2p>=0) {
+        if(wifiP2pManager!=null && rfCommService.desiredWifiDirect && idxP2p>=0) {
           var p2pWifiAddr = ncfActionString.substring(idxP2p+8)
           val idxPipe = p2pWifiAddr.indexOf("|")
           if(idxPipe>=0) 
@@ -666,9 +649,9 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
           if(audioConfirmSound!=null)
             audioConfirmSound.start
 
-          rfCommService.connectWifi(wifiP2pManager, p2pChannel, p2pWifiAddr)
+          rfCommService.connectWifi(wifiP2pManager, p2pWifiAddr)
 
-        } else if(mBluetoothAdapter!=null && desiredBluetooth && idxBt>=0) {
+        } else if(mBluetoothAdapter!=null && rfCommService.desiredBluetooth && idxBt>=0) {
           var btAddr = ncfActionString.substring(idxBt+3)
           val idxPipe = btAddr.indexOf("|")
           if(idxPipe>=0) 
@@ -680,8 +663,8 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
             audioConfirmSound.start
 
           if(rfCommService!=null) {
-            if(D) Log.i(TAG, "onNewIntent NdefAction rfCommService!=null activityResumed="+activityResumed)
-            if(activityResumed)   // tmtmtm ???
+            if(D) Log.i(TAG, "onNewIntent NdefAction rfCommService!=null activityResumed="+rfCommService.activityResumed)
+            if(rfCommService.activityResumed)   // todo tmtmtm ???
               rfCommService.acceptAndConnect = true
 
             def remoteBluetoothDevice = mBluetoothAdapter.getRemoteDevice(btAddr)
@@ -729,7 +712,7 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
             mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter
           if(mBluetoothAdapter!=null) {
             if(D) Log.i(TAG, "onActivityResult REQUEST_ENABLE_BT -> nfcServiceSetup")
-            nfcServiceSetup // update our ndef push message to include our btAddr
+            rfCommService.nfcServiceSetup // update our ndef push message to include our btAddr
           }
 
         } else {
@@ -749,101 +732,19 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
     }
   }
 
-  def nfcServiceSetup() {
-    // this is called by radioDialog/OK, by wifiDirectBroadcastReceiver:WIFI_P2P_THIS_DEVICE_CHANGED_ACTION and by onActivityResult:REQUEST_ENABLE_BT
-
-    if(D) Log.i(TAG, "nfcServiceSetup mNfcAdapter="+mNfcAdapter+" ...")
-
-    // setup NFC (only for Android 2.3.3+ and only if NFC hardware is available)
-    if(android.os.Build.VERSION.SDK_INT>=10 && mNfcAdapter!=null && mNfcAdapter.isEnabled) {
-      if(nfcPendingIntent==null) {
-        // Create a generic PendingIntent that will be delivered to this activity 
-        // The NFC stack will fill in the intent with the details of the discovered tag 
-        // before delivering to this activity.
-        nfcPendingIntent = PendingIntent.getActivity(activity, 0,
-                new Intent(activity, activityRuntimeClass).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), 0)
-
-        // setup an intent filter for all MIME based dispatches
-        val ndef = new IntentFilter(NfcAdapter.ACTION_NDEF_DISCOVERED)
-        try {
-          if(D) Log.i(TAG, "nfcServiceSetup ndef.addDataType...")
-          ndef.addDataType("*/*")   // or "text/plain"
-          if(D) Log.i(TAG, "nfcServiceSetup ndef.addDataType done")
-        } catch {
-          case e: MalformedMimeTypeException =>
-            Log.e(TAG, "nfcServiceSetup ndef.addDataType MalformedMimeTypeException")
-            throw new RuntimeException("fail", e)
-        }
-        nfcFilters = Array(ndef)
-
-        // Setup a tech list for all NfcF tags
-        if(D) Log.i(TAG, "nfcServiceSetup setup a tech list for all NfcF tags...")
-        nfcTechLists = Array(Array(classOf[NfcF].getName))
-      }
-      if(D) Log.i(TAG, "nfcServiceSetup enable nfc dispatch mNfcAdapter="+mNfcAdapter+" activity="+activity+" nfcPendingIntent="+nfcPendingIntent+" nfcFilters="+nfcFilters+" nfcTechLists="+nfcTechLists+" ...")
-
-      if(activityResumed) {
-        // This method must be called from the main thread, and only when the activity is in the foreground (resumed). 
-        // Also, activities must call disableForegroundDispatch(Activity) before the completion of their onPause() callback 
-        mNfcAdapter.enableForegroundDispatch(activity, nfcPendingIntent, nfcFilters, nfcTechLists)
-        if(D) Log.i(TAG, "nfcServiceSetup enableForegroundDispatch done")
-      } else {
-        if(D) Log.i(TAG, "nfcServiceSetup enableForegroundDispatch delayed until activity is resumed")
-      }
-
-      // embed our btAddress + localP2pWifiAddr in a new NdefMessage to be used via enableForegroundNdefPush
-      var nfcString = ""
-      val btAddress = mBluetoothAdapter.getAddress
-      if(desiredBluetooth && btAddress!=null)
-        nfcString += "bt="+btAddress
-      if(desiredWifiDirect && localP2pWifiAddr!=null) {
-        if(nfcString.length>0)
-          nfcString += "|"
-        nfcString += "p2pWifi="+localP2pWifiAddr
-      }
-
-      if(nfcString.length==0) {
-        // this should never happen, right?
-        if(D) Log.i(TAG, "nfcServiceSetup nfcString empty")
-        nfcForegroundPushMessage=null
-        if(activityResumed) {
-          //mNfcAdapter.disableForegroundNdefPush(activity)
-          mNfcAdapter.setNdefPushMessage(null, activity)
-        }
-
-      } else {        
-        nfcForegroundPushMessage = new NdefMessage(Array(NfcHelper.newTextRecord(nfcString, Locale.ENGLISH, true)))
-        if(nfcForegroundPushMessage!=null) {
-          if(activityResumed) {
-            //mNfcAdapter.enableForegroundNdefPush(activity, nfcForegroundPushMessage)
-            //if(D) Log.i(TAG, "nfcServiceSetup enable nfc ForegroundNdefPush nfcString=["+nfcString+"] done")
-            mNfcAdapter.setNdefPushMessage(nfcForegroundPushMessage, activity)
-            if(D) Log.i(TAG, "setNdefPushMessage enable nfc ForegroundNdefPush nfcString=["+nfcString+"] done")
-
-          } else {
-            if(D) Log.i(TAG, "nfcServiceSetup enable nfc ForegroundNdefPush nfcString=["+nfcString+"] delayed until activity is resumed")
-          }
-        }
-      }
-
-    } else {
-      Log.e(TAG, "nfcServiceSetup NFC NOT set up mNfcAdapter="+mNfcAdapter)
-    }
-  }
-
   def switchOnDesiredRadios() {
-    if(desiredNfc && android.os.Build.VERSION.SDK_INT>=10 && mNfcAdapter!=null && !mNfcAdapter.isEnabled) {
+    if(rfCommService.desiredNfc && android.os.Build.VERSION.SDK_INT>=10 && rfCommService.mNfcAdapter!=null && !rfCommService.mNfcAdapter.isEnabled) {
       // let user enable nfc
-      if(D) Log.i(TAG, "msgFromServiceHandler switchOnDesiredRadios !mNfcAdapter.isEnabled: ask user to enable nfc")
+      if(D) Log.i(TAG, "msgFromServiceHandler switchOnDesiredRadios !rfCommService.mNfcAdapter.isEnabled: ask user to enable nfc")
       AndrTools.runOnUiThread(activity) { () =>
         Toast.makeText(activity, "Please enable 'NFC', then go back...", Toast.LENGTH_SHORT).show
       }
       activity.startActivity(new Intent(android.provider.Settings.ACTION_WIRELESS_SETTINGS))
       // todo: onexit: offer to disable NFC
 
-    } else if(desiredWifiDirect && android.os.Build.VERSION.SDK_INT>=14 && wifiP2pManager!=null && !isWifiP2pEnabled) {
+    } else if(rfCommService.desiredWifiDirect && android.os.Build.VERSION.SDK_INT>=14 && wifiP2pManager!=null && !rfCommService.isWifiP2pEnabled) {
       // let user enable wifip2p
-      if(D) Log.i(TAG, "msgFromServiceHandler switchOnDesiredRadios isWifiP2pEnabled="+isWifiP2pEnabled+": ask user to enable p2p")
+      if(D) Log.i(TAG, "msgFromServiceHandler switchOnDesiredRadios isWifiP2pEnabled="+rfCommService.isWifiP2pEnabled+": ask user to enable p2p")
       AndrTools.runOnUiThread(activity) { () =>
         Toast.makeText(activity, "Please enable 'WiFi direct', then go back...", Toast.LENGTH_SHORT).show
       }
@@ -854,7 +755,7 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
       //       -> which will trigger a p2p connect request to the ipAddr given by nfc-dispatch
       // todo: onexit: offer to disable wifi-direct
 
-    } else if(desiredBluetooth && mBluetoothAdapter!=null && !mBluetoothAdapter.isEnabled) {
+    } else if(rfCommService.desiredBluetooth && mBluetoothAdapter!=null && !mBluetoothAdapter.isEnabled) {
       // let user enable bluetooth
       val enableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
       activity.startActivityForResult(enableIntent, REQUEST_ENABLE_BT)
@@ -864,7 +765,7 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
   }
 
   def isNfcEnabled() :Boolean = {
-    if(android.os.Build.VERSION.SDK_INT>=10 && mNfcAdapter!=null && mNfcAdapter.isEnabled)
+    if(android.os.Build.VERSION.SDK_INT>=10 && rfCommService.mNfcAdapter!=null && rfCommService.mNfcAdapter.isEnabled)
       return true
     return false
   }

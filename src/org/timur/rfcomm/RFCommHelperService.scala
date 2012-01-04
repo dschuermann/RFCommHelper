@@ -38,9 +38,12 @@ import java.net.InetAddress
 
 import android.app.Activity
 import android.app.ActivityManager
+import android.app.PendingIntent
 import android.util.Log
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.content.IntentFilter.MalformedMimeTypeException
 import android.content.BroadcastReceiver
 import android.os.IBinder
 import android.os.Bundle
@@ -67,7 +70,12 @@ import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pDeviceList
 import android.net.NetworkInfo
 
-import android.webkit.MimeTypeMap
+import android.nfc.NfcAdapter
+import android.nfc.NdefMessage
+import android.nfc.tech.NfcF
+import java.util.Locale
+
+//import android.webkit.MimeTypeMap
 
 object RFCommHelperService {
   val STATE_NONE = 0       // doing nothing
@@ -115,6 +123,21 @@ class RFCommHelperService extends android.app.Service {
 
   var discoveringPeersInProgress = false  // so we do not call discoverPeers() again while it is active still
 
+  var isWifiP2pEnabled = false    // if false in onResume, we will offer ACTION_WIRELESS_SETTINGS 
+  var p2pConnected = false    // set and cleared in WiFiDirectBroadcastReceiver
+  var p2pChannel:Channel = null
+  var localP2pWifiAddr:String = null   // set and used in WiFiDirectBroadcastReceiver
+  var mNfcAdapter:NfcAdapter = null
+  var nfcPendingIntent:PendingIntent = null
+  var nfcFilters:Array[IntentFilter] = null
+  var nfcTechLists:Array[Array[String]] = null
+  var activityResumed = false
+  var activityRuntimeClass:java.lang.Class[Activity] = null
+  var nfcForegroundPushMessage:NdefMessage = null
+  var desiredBluetooth = false
+  var desiredWifiDirect = false
+  var desiredNfc = false
+
   // private objects
   private val TAG = "RFCommHelperService"
   private val D = true
@@ -129,10 +152,10 @@ class RFCommHelperService extends android.app.Service {
 
   var p2pRemoteAddressToConnect:String = null   // needed to carry the target ip-p2p-addr from ACTION_NDEF_DISCOVERED/discoverPeers() to WIFI_P2P_PEERS_CHANGED_ACTION/wifiP2pManager.connect()
 
-  val btAdapter = BluetoothAdapter.getDefaultAdapter
-  var myBtName = if(btAdapter!=null) btAdapter.getName else null
-  var myBtAddr = if(btAdapter!=null) btAdapter.getAddress else null
-  if(D) Log.i(TAG, "constructor myBtName="+myBtName+" myBtAddr="+myBtAddr+" btAdapter="+btAdapter+" ################################")
+  val mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter
+  var myBtName = if(mBluetoothAdapter!=null) mBluetoothAdapter.getName else null
+  var myBtAddr = if(mBluetoothAdapter!=null) mBluetoothAdapter.getAddress else null
+  if(D) Log.i(TAG, "constructor myBtName="+myBtName+" myBtAddr="+myBtAddr+" mBluetoothAdapter="+mBluetoothAdapter+" ################################")
   //@volatile private var sendMsgCounter:Long = 0
   @volatile private var mConnectThread:ConnectThread = null
   private var blobTaskId = 0
@@ -162,16 +185,16 @@ class RFCommHelperService extends android.app.Service {
 
     // in case bt was turned on after app start
     if(myBtName==null) {
-      myBtName = btAdapter.getName
+      myBtName = mBluetoothAdapter.getName
       if(myBtName==null)
         myBtName = "unknown"  // tmtmtm
     }
     if(myBtAddr==null) {
-      myBtAddr = btAdapter.getAddress
+      myBtAddr = mBluetoothAdapter.getAddress
       if(myBtAddr==null)
         myBtAddr = "unknown"  // tmtmtm
     }
-    if(D) Log.i(TAG, "start myBtName="+myBtName+" myBtAddr="+myBtAddr+" btAdapter="+btAdapter)
+    if(D) Log.i(TAG, "start myBtName="+myBtName+" myBtAddr="+myBtAddr+" mBluetoothAdapter="+mBluetoothAdapter)
 
     // start thread to listen on BluetoothServerSocket
     if(mSecureAcceptThread == null) {
@@ -221,7 +244,7 @@ class RFCommHelperService extends android.app.Service {
     mConnectThread.start
   }
 
-  def connectWifi(wifiP2pManager:WifiP2pManager, p2pChannel:Channel, p2pWifiAddr:String, reportConnectState:Boolean=true) :Unit = synchronized {
+  def connectWifi(wifiP2pManager:WifiP2pManager, p2pWifiAddr:String, reportConnectState:Boolean=true) :Unit = synchronized {
     p2pRemoteAddressToConnect = p2pWifiAddr
 
     if(discoveringPeersInProgress) {
@@ -434,11 +457,11 @@ class RFCommHelperService extends android.app.Service {
 /*
       if(secure) {
 */
-        mmServerSocket = btAdapter.listenUsingRfcommWithServiceRecord(NAME_SECURE, MY_UUID_SECURE)
+        mmServerSocket = mBluetoothAdapter.listenUsingRfcommWithServiceRecord(NAME_SECURE, MY_UUID_SECURE)
 /*
       } else {
         try {
-          mmServerSocket = btAdapter.listenUsingInsecureRfcommWithServiceRecord(NAME_INSECURE, MY_UUID_INSECURE)
+          mmServerSocket = mBluetoothAdapter.listenUsingInsecureRfcommWithServiceRecord(NAME_INSECURE, MY_UUID_INSECURE)
         } catch {
           case nsmerr: java.lang.NoSuchMethodError =>
             // this should reall not happen, because we run the insecure method only if os >= 2.3.3
@@ -577,10 +600,10 @@ class RFCommHelperService extends android.app.Service {
 
       // Always cancel discovery because it will slow down a connection
 /*
-      if(btAdapter.isDiscovering) {
+      if(mBluetoothAdapter.isDiscovering) {
         Log.e(TAG, "ConnectThread run isDiscovering -> cancelDiscovery()")
 */
-        btAdapter.cancelDiscovery
+        mBluetoothAdapter.cancelDiscovery
 /*
       } else {
         Log.e(TAG, "ConnectThread run NOT isDiscovering")
@@ -648,13 +671,89 @@ class RFCommHelperService extends android.app.Service {
     }
   }
 
-  def newWiFiDirectBroadcastReceiver(wifiP2pManager:WifiP2pManager, rfCommHelper:RFCommHelper, rfCommService:RFCommHelperService) :WiFiDirectBroadcastReceiver = {
-    return new WiFiDirectBroadcastReceiver(wifiP2pManager, rfCommHelper, rfCommService)
+  def nfcServiceSetup() {
+    // this is called by radioDialog/OK, by wifiDirectBroadcastReceiver:WIFI_P2P_THIS_DEVICE_CHANGED_ACTION and by onActivityResult:REQUEST_ENABLE_BT
+
+    if(D) Log.i(TAG, "nfcServiceSetup mNfcAdapter="+mNfcAdapter+" ...")
+
+    // setup NFC (only for Android 2.3.3+ and only if NFC hardware is available)
+    if(android.os.Build.VERSION.SDK_INT>=10 && mNfcAdapter!=null && mNfcAdapter.isEnabled) {
+      if(nfcPendingIntent==null) {
+        // Create a generic PendingIntent that will be delivered to this activity 
+        // The NFC stack will fill in the intent with the details of the discovered tag 
+        // before delivering to this activity.
+        nfcPendingIntent = PendingIntent.getActivity(activity, 0,
+                new Intent(activity, activityRuntimeClass).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), 0)
+
+        // setup an intent filter for all MIME based dispatches
+        val ndef = new IntentFilter(NfcAdapter.ACTION_NDEF_DISCOVERED)
+        try {
+          if(D) Log.i(TAG, "nfcServiceSetup ndef.addDataType...")
+          ndef.addDataType("*/*")   // or "text/plain"
+          if(D) Log.i(TAG, "nfcServiceSetup ndef.addDataType done")
+        } catch {
+          case e: MalformedMimeTypeException =>
+            Log.e(TAG, "nfcServiceSetup ndef.addDataType MalformedMimeTypeException")
+            throw new RuntimeException("fail", e)
+        }
+        nfcFilters = Array(ndef)
+
+        // Setup a tech list for all NfcF tags
+        if(D) Log.i(TAG, "nfcServiceSetup setup a tech list for all NfcF tags...")
+        nfcTechLists = Array(Array(classOf[NfcF].getName))
+      }
+      if(D) Log.i(TAG, "nfcServiceSetup enable nfc dispatch mNfcAdapter="+mNfcAdapter+" activity="+activity+" nfcPendingIntent="+nfcPendingIntent+" nfcFilters="+nfcFilters+" nfcTechLists="+nfcTechLists+" ...")
+
+      if(activityResumed) {
+        // This method must be called from the main thread, and only when the activity is in the foreground (resumed). 
+        // Also, activities must call disableForegroundDispatch(Activity) before the completion of their onPause() callback 
+        mNfcAdapter.enableForegroundDispatch(activity, nfcPendingIntent, nfcFilters, nfcTechLists)
+        if(D) Log.i(TAG, "nfcServiceSetup enableForegroundDispatch done")
+      } else {
+        if(D) Log.i(TAG, "nfcServiceSetup enableForegroundDispatch delayed until activity is resumed")
+      }
+
+      // embed our btAddress + localP2pWifiAddr in a new NdefMessage to be used via enableForegroundNdefPush
+      var nfcString = ""
+      val btAddress = mBluetoothAdapter.getAddress
+      if(desiredBluetooth && btAddress!=null)
+        nfcString += "bt="+btAddress
+      if(desiredWifiDirect && localP2pWifiAddr!=null) {
+        if(nfcString.length>0)
+          nfcString += "|"
+        nfcString += "p2pWifi="+localP2pWifiAddr
+      }
+
+      if(nfcString.length==0) {
+        // this should never happen, right?
+        if(D) Log.i(TAG, "nfcServiceSetup nfcString empty")
+        nfcForegroundPushMessage=null
+        if(activityResumed)
+          mNfcAdapter.setNdefPushMessage(null, activity)
+
+      } else {        
+        nfcForegroundPushMessage = new NdefMessage(Array(NfcHelper.newTextRecord(nfcString, Locale.ENGLISH, true)))
+        if(nfcForegroundPushMessage!=null) {
+          if(activityResumed) {
+            mNfcAdapter.setNdefPushMessage(nfcForegroundPushMessage, activity)
+            if(D) Log.i(TAG, "setNdefPushMessage enable nfc ForegroundNdefPush nfcString=["+nfcString+"] done")
+
+          } else {
+            if(D) Log.i(TAG, "nfcServiceSetup enable nfc ForegroundNdefPush nfcString=["+nfcString+"] delayed until activity is resumed")
+          }
+        }
+      }
+
+    } else {
+      Log.e(TAG, "nfcServiceSetup NFC NOT set up mNfcAdapter="+mNfcAdapter)
+    }
   }
 
-// todo: must remove all rfCommHelper. (because rfCommHelper. is not part of the service abd might get discarded from memory)
+  def newWiFiDirectBroadcastReceiver(wifiP2pManager:WifiP2pManager) :WiFiDirectBroadcastReceiver = {
+    return new WiFiDirectBroadcastReceiver(wifiP2pManager)
+  }
 
-  class WiFiDirectBroadcastReceiver(val wifiP2pManager:WifiP2pManager, rfCommHelper:RFCommHelper, rfCommService:RFCommHelperService) extends BroadcastReceiver {
+  class WiFiDirectBroadcastReceiver(wifiP2pManager:WifiP2pManager) extends BroadcastReceiver {
     private val TAG = "WiFiDirectBroadcastReceiver"
     private val D = true
 
@@ -669,13 +768,13 @@ class RFCommHelperService extends android.app.Service {
         if (state == WifiP2pManager.WIFI_P2P_STATE_ENABLED) {
           // Wifi Direct mode is enabled
           //if(D) Log.i(TAG, "WifiP2pEnabled true ####")
-          rfCommHelper.setIsWifiP2pEnabled(true)
+          isWifiP2pEnabled=true
 
         } else {
           //if(D) Log.i(TAG, "WifiP2pEnabled false ####")
           p2pRemoteAddressToConnect = null
-          rfCommHelper.p2pConnected = false
-          rfCommHelper.setIsWifiP2pEnabled(false)
+          p2pConnected = false           // todo tmtmtm
+          isWifiP2pEnabled=false
         }
 
       } else if(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION == action) {
@@ -683,11 +782,11 @@ class RFCommHelperService extends android.app.Service {
         // we get our own dynamic p2p-mac-addr
 
         val wifiP2pDevice = intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_DEVICE).asInstanceOf[WifiP2pDevice]
-        if(rfCommHelper.localP2pWifiAddr==null || rfCommHelper.localP2pWifiAddr!=wifiP2pDevice.deviceAddress) {
+        if(localP2pWifiAddr==null || localP2pWifiAddr!=wifiP2pDevice.deviceAddress) {
           // we now know our p2p mac address, we now can do nfcServiceSetup
           if(D) Log.i(TAG, "WIFI_P2P_THIS_DEVICE_CHANGED_ACTION OUR deviceName="+wifiP2pDevice.deviceName+" deviceAddress="+wifiP2pDevice.deviceAddress) //+" info="+wifiP2pDevice.toString)
-          rfCommHelper.localP2pWifiAddr = wifiP2pDevice.deviceAddress
-          rfCommHelper.nfcServiceSetup
+          localP2pWifiAddr = wifiP2pDevice.deviceAddress
+          nfcServiceSetup
         }
 
       } else if (WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION == action) {
@@ -702,7 +801,7 @@ class RFCommHelperService extends android.app.Service {
 
         } else {
           //if(D) Log.i(TAG, "WIFI_P2P_PEERS_CHANGED_ACTION requestPeers() ####")
-          wifiP2pManager.requestPeers(rfCommHelper.p2pChannel, new PeerListListener() {
+          wifiP2pManager.requestPeers(p2pChannel, new PeerListListener() {
             override def onPeersAvailable(wifiP2pDeviceList:WifiP2pDeviceList) {
               // wifiP2pDeviceList.getDeviceList() is a list of WifiP2pDevice objects, each containg deviceAddress, deviceName, primaryDeviceType, etc.
               wifiP2pDeviceArrayList.addAll(wifiP2pDeviceList.getDeviceList.asInstanceOf[java.util.Collection[WifiP2pDevice]])
@@ -720,17 +819,17 @@ class RFCommHelperService extends android.app.Service {
                       p2pWifiDiscoveredCallbackFkt(wifiP2pDevice)
 
                     if(p2pRemoteAddressToConnect!=null && wifiP2pDevice.deviceAddress==p2pRemoteAddressToConnect) {
-                      if(rfCommHelper.localP2pWifiAddr < p2pRemoteAddressToConnect) {
-                        if(D) Log.i(TAG, "onPeersAvailable - local="+rfCommHelper.localP2pWifiAddr+" < remote="+p2pRemoteAddressToConnect+" - stay passive - let other device connect() ########################")
+                      if(localP2pWifiAddr < p2pRemoteAddressToConnect) {
+                        if(D) Log.i(TAG, "onPeersAvailable - local="+localP2pWifiAddr+" < remote="+p2pRemoteAddressToConnect+" - stay passive - let other device connect() ########################")
 
                       } else {
-                        if(D) Log.i(TAG, "onPeersAvailable - local="+rfCommHelper.localP2pWifiAddr+" > remote="+p2pRemoteAddressToConnect+" - be active ########################")
-                        if(D) Log.i(TAG, "onPeersAvailable connect() to="+wifiP2pDevice.deviceAddress+" p2pConnected="+rfCommHelper.p2pConnected+" ########################")
+                        if(D) Log.i(TAG, "onPeersAvailable - local="+localP2pWifiAddr+" > remote="+p2pRemoteAddressToConnect+" - be active ########################")
+                        if(D) Log.i(TAG, "onPeersAvailable connect() to="+wifiP2pDevice.deviceAddress+" p2pConnected="+p2pConnected+" ########################")
                         val wifiP2pConfig = new WifiP2pConfig()
                         wifiP2pConfig.deviceAddress = p2pRemoteAddressToConnect
                         wifiP2pConfig.groupOwnerIntent = -1
                         wifiP2pConfig.wps.setup = WpsInfo.PBC
-                        wifiP2pManager.connect(rfCommHelper.p2pChannel, wifiP2pConfig, new ActionListener() {
+                        wifiP2pManager.connect(p2pChannel, wifiP2pConfig, new ActionListener() {
                           // note: may result in "E/wpa_supplicant(): Failed to create interface p2p-wlan0-5: -12 (Out of memory)"
                           //       in which case onSuccess() is often still be called
                         
@@ -782,7 +881,7 @@ class RFCommHelperService extends android.app.Service {
           return
         }
         
-        if(networkInfo.isConnected && rfCommHelper.p2pConnected) {
+        if(networkInfo.isConnected && p2pConnected) {
           if(D) Log.i(TAG, "WIFI_P2P_CONNECTION_CHANGED_ACTION we are already connected - strange... ignore ###################")
           // todo: new p2p-connect, but we were connected already (maybe this is how we set up a group of 3 or more clients?)
           return
@@ -791,20 +890,20 @@ class RFCommHelperService extends android.app.Service {
         if(!networkInfo.isConnected) {
           p2pRemoteAddressToConnect = null
 
-          if(!rfCommHelper.p2pConnected) {
+          if(!p2pConnected) {
             if(D) Log.i(TAG, "WIFI_P2P_CONNECTION_CHANGED_ACTION we are now disconnected, we were disconnect already ###################")
             return
           }
           // we think we are connected, but now we are being disconnected
           if(D) Log.i(TAG, "WIFI_P2P_CONNECTION_CHANGED_ACTION we are now disconnected, set p2pConnected=false ###################")
-          rfCommHelper.p2pConnected = false
+          p2pConnected = false
           return
 
         } else {
           // we got connected with another device, request connection info to find group owner IP
-          rfCommHelper.p2pConnected = true
+          p2pConnected = true
           if(D) Log.i(TAG, "WIFI_P2P_CONNECTION_CHANGED_ACTION we are now p2pWifi connected with the other device ###################")
-          wifiP2pManager.requestConnectionInfo(rfCommHelper.p2pChannel, new WifiP2pManager.ConnectionInfoListener() {
+          wifiP2pManager.requestConnectionInfo(p2pChannel, new WifiP2pManager.ConnectionInfoListener() {
             override def onConnectionInfoAvailable(wifiP2pInfo:WifiP2pInfo) {
               if(D) Log.i(TAG, "WIFI_P2P_CONNECTION_CHANGED_ACTION onConnectionInfoAvailable groupOwnerAddress="+wifiP2pInfo.groupOwnerAddress+" isGroupOwner="+wifiP2pInfo.isGroupOwner+" ###############")
 
@@ -816,7 +915,7 @@ class RFCommHelperService extends android.app.Service {
 
                   def closeDownP2p() {
                     // this will be called (by both sides) when the thread is finished
-                    Log.d(TAG, "closeDownP2p p2pConnected="+rfCommHelper.p2pConnected+" p2pChannel="+rfCommHelper.p2pChannel)
+                    Log.d(TAG, "closeDownP2p p2pConnected="+p2pConnected+" p2pChannel="+p2pChannel)
                     try { Thread.sleep(1200) } catch { case ex:Exception => }
                     if(socket!=null) {
                       socket.close
@@ -826,9 +925,9 @@ class RFCommHelperService extends android.app.Service {
                       serverSocket.close
                       serverSocket=null
                     }
-                    if(rfCommHelper.p2pConnected) {
+                    if(p2pConnected) {
                       Log.d(TAG, "closeDownP2p wifiP2pManager.removeGroup() (this is how we disconnect from p2pWifi) ###############")
-                      wifiP2pManager.removeGroup(rfCommHelper.p2pChannel, new ActionListener() {
+                      wifiP2pManager.removeGroup(p2pChannel, new ActionListener() {
                         override def onSuccess() {
                           if(D) Log.i(TAG, "closeDownP2p wifiP2pManager.removeGroup() success ####")
                           // wifiDirectBroadcastReceiver will notify us
@@ -841,7 +940,7 @@ class RFCommHelperService extends android.app.Service {
                         }
                       })
 
-                      rfCommHelper.p2pConnected = false  // probably not required, because WIFI_P2P_CONNECTION_CHANGED_ACTION will be called again with networkInfo.isConnected=false
+                      p2pConnected = false  // probably not required, because WIFI_P2P_CONNECTION_CHANGED_ACTION will be called again with networkInfo.isConnected=false
                       p2pRemoteAddressToConnect = null
                     }
                   }
@@ -857,12 +956,12 @@ class RFCommHelperService extends android.app.Service {
                       Log.d(TAG, "serverSocket opened")
                       socket = serverSocket.accept
                       if(socket!=null) {
-                        rfCommService.connectedWifi(socket, actor=false, closeDownP2p)
+                        connectedWifi(socket, actor=false, closeDownP2p)
                       }
 
                     } catch {
                       case ioException:IOException =>
-                        Log.e(TAG, "serverSocket failed to connect ex="+ioException.getMessage+" #######")
+                        Log.e(TAG, "serverSocket failed to connect ex="+ioException.getMessage)
                         closeDownP2p
                     }
 
@@ -879,7 +978,7 @@ class RFCommHelperService extends android.app.Service {
                       socket.connect(new InetSocketAddress(host, port), SOCKET_TIMEOUT)
                       // we wait up to 5000 ms for the connection... if we don't get connected, an ioexception is thrown                  
                       // otherwise we continue here by connecting to the other peer
-                      rfCommService.connectedWifi(socket, actor=true, closeDownP2p)
+                      connectedWifi(socket, actor=true, closeDownP2p)
 
                     } catch {
                       case ioException:IOException =>
