@@ -93,8 +93,6 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
   var p2pConnected = false    // set and cleared in WiFiDirectBroadcastReceiver
   var p2pChannel:Channel = null
   var localP2pWifiAddr:String = null   // set and used in WiFiDirectBroadcastReceiver
-  var p2pRemoteAddressToConnect:String = null   // needed to carry the target ip-p2p-addr from ACTION_NDEF_DISCOVERED/discoverPeers() to WIFI_P2P_PEERS_CHANGED_ACTION/wifiP2pManager.connect()
-  var discoveringPeersInProgress = false  // so we do not call discoverPeers() again while it is active still
   var connectAttemptFromNfc = false
   var desiredBluetooth = false
   var desiredWifiDirect = false
@@ -668,39 +666,7 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
           if(audioConfirmSound!=null)
             audioConfirmSound.start
 
-          p2pRemoteAddressToConnect = p2pWifiAddr
-
-          if(discoveringPeersInProgress) {
-            if(D) Log.i(TAG, "onNewIntent discoveringPeersInProgress: do not call discoverPeers() again")
-
-          } else {
-            if(D) Log.i(TAG, "onNewIntent wifiP2pManager.discoverPeers()")
-            wifiP2pManager.discoverPeers(p2pChannel, new WifiP2pManager.ActionListener() {
-              // note: discovered peers arrive via wifiDirectBroadcastReceiver WIFI_P2P_PEERS_CHANGED_ACTION
-              //       a call to manager.requestPeers() will hand over a PeerListListener with onPeersAvailable() which contains a WifiP2pDeviceList
-              //       WifiP2pDeviceList.getDeviceList(), a list of WifiP2pDevice objects, each containg deviceAddress, deviceName, primaryDeviceType, etc.
-              
-              // note: initiated discovery requests stay active until the device starts connecting to a peer or forms a p2p group
-              
-              // todo: p2pWifi problem: sometimes we get neither onSuccess nor onFailure
-              //       and the cause does not seem to be the other device (problem stays after other devices was rebooted)
-              //       just restarting the app (on GN) solves the problem - this is an app issue!
-
-              override def onSuccess() {
-                discoveringPeersInProgress = true
-                if(D) Log.i(TAG, "onNewIntent discoverPeers() success")
-              }
-
-              override def onFailure(reasonCode:Int) {
-                if(D) Log.i(TAG, "onNewIntent discoverPeers() fail reasonCode="+reasonCode)
-                // reason ERROR=0, P2P_UNSUPPORTED=1, BUSY=2
-                // note: we do get 2
-                if(reasonCode!=2)
-                  discoveringPeersInProgress = false
-              }
-            })
-            if(D) Log.i(TAG, "onNewIntent wifiP2pManager.discoverPeers() done")
-          }
+          rfCommService.connectWifi(wifiP2pManager, p2pChannel, p2pWifiAddr)
 
         } else if(mBluetoothAdapter!=null && desiredBluetooth && idxBt>=0) {
           var btAddr = ncfActionString.substring(idxBt+3)
