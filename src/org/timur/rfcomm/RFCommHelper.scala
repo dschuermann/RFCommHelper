@@ -721,8 +721,10 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
 
   private var pairedDevicesShadowHashMap:mutable.HashMap[String,String] = null
   private var btBroadcastReceiver:BroadcastReceiver = null
+  private var arrayAdapter:ArrayAdapter[String] = null
 
-  def addAllDevices(arrayAdapter:ArrayAdapter[String]) {
+  def addAllDevices(setArrayAdapter:ArrayAdapter[String]) {
+    arrayAdapter = setArrayAdapter
     // now fill our listView with all possible (paired/stored/discovered) devices of the requested device types
     // we use pairedDevicesShadowHashMap[addr,name] as a shadow-HashMap containing all listed devices, so we can prevent double-entries in the visible arrayAdapter
     pairedDevicesShadowHashMap = new mutable.HashMap[String,String]()
@@ -808,11 +810,11 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
     val btName = device.substring(0,idxCR)
     val idxBlank = device.substring(idxCR+1).indexOf(" ")
     val btAddr = if(idxBlank>=0) device.substring(idxCR+1,idxCR+1+idxBlank) else device.substring(idxCR+1)
-    if(D) Log.i(TAG, "add BtPairedDevices btAddr="+btAddr+" btName="+btName)
     if(pairedDevicesShadowHashMap.getOrElse(btAddr,null)==null) {
+      if(D) Log.i(TAG, "add BtPairedDevices btAddr="+btAddr+" btName="+btName)
       pairedDevicesShadowHashMap += btAddr -> btName
       arrayAdapter.add(device)
-      if(D) Log.i(TAG, "add device, arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size+" ############")
+      //if(D) Log.i(TAG, "add device, arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size+" ############")
     }
   }
 
