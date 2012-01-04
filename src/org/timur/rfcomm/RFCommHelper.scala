@@ -634,6 +634,7 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
 
                 // show "connecting progress" animation
                 // todo: what if noone connects? can this aniation be aborted, does it timeout?
+                rfCommService.state = RFCommHelperService.STATE_CONNECTING    // tmtmtm?
                 if(msgFromServiceHandler!=null)
                   msgFromServiceHandler.obtainMessage(RFCommHelperService.CONNECTING, -1, -1, remoteBluetoothDevice.getName+" "+remoteBluetoothDevice.getAddress).sendToTarget
               }
@@ -750,18 +751,18 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
             if(BluetoothDevice.ACTION_FOUND==actionString) {
               val bluetoothDevice = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE).asInstanceOf[BluetoothDevice]
               if(bluetoothDevice!=null) {
-                if(D) Log.i(TAG, "btBroadcastReceiver BluetoothDevice.ACTION_FOUND name=["+bluetoothDevice.getName+"] addr="+bluetoothDevice.getAddress)
                 if(bluetoothDevice.getName!=null && bluetoothDevice.getName.length>0) {
                   if(pairedDevicesShadowHashMap.getOrElse(bluetoothDevice.getAddress,null)==null) {
                     pairedDevicesShadowHashMap += bluetoothDevice.getAddress -> bluetoothDevice.getName
                     arrayAdapter.add(bluetoothDevice.getName+"\n"+bluetoothDevice.getAddress+" bt")
-                    if(D) Log.i(TAG, "btBroadcastReceiver BluetoothDevice.ACTION_FOUND, arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size+" ############")
+                    if(D) Log.i(TAG, "btBroadcastReceiver BluetoothDevice.ACTION_FOUND name=["+bluetoothDevice.getName+"] addr="+bluetoothDevice.getAddress+
+                                     " arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size)
                   }
                 }
               }
             }
             else if(BluetoothAdapter.ACTION_DISCOVERY_FINISHED==actionString) {
-              if(D) Log.i(TAG,"btBroadcastReceiver ACTION_DISCOVERY_FINISHED arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size+" ############")
+              //if(D) Log.i(TAG,"btBroadcastReceiver ACTION_DISCOVERY_FINISHED arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size+" ############")
               mBluetoothAdapter.startDiscovery
             }
           }
@@ -819,15 +820,24 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
   }
 
   def addAllDevicesUnregister() {
+    if(D) Log.i(TAG, "addAllDevicesUnregister")
     if(rfCommService!=null) {
-      if(D) Log.i(TAG, "addAllDevicesUnregister rfCommService.callbackFkt = null")
-      rfCommService.p2pWifiDiscoveredCallbackFkt = null   
+      if(rfCommService.p2pWifiDiscoveredCallbackFkt!=null) {
+        if(D) Log.i(TAG, "addAllDevicesUnregister rfCommService.callbackFkt=null")
+        rfCommService.p2pWifiDiscoveredCallbackFkt = null
+      }
+      if(mBluetoothAdapter!=null) {
+        if(D) Log.i(TAG, "addAllDevicesUnregister mBluetoothAdapter.cancelDiscovery")
+        mBluetoothAdapter.cancelDiscovery
+      }
       if(btBroadcastReceiver!=null) {
-        if(mBluetoothAdapter!=null)
-          mBluetoothAdapter.cancelDiscovery
-        activity.unregisterReceiver(btBroadcastReceiver)
+        if(D) Log.i(TAG, "addAllDevicesUnregister activity.unregisterReceiver")
+        if(activity!=null)
+          activity.unregisterReceiver(btBroadcastReceiver)
+        btBroadcastReceiver=null
       }
     }
   }
+
 }
 
