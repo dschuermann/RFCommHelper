@@ -472,16 +472,16 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
   }
 
   def onPause() {
-    rfCommService.activityResumed = false
+    if(rfCommService!=null)
+      rfCommService.activityResumed = false
     if(D) Log.i(TAG, "onPause...")
     AndrTools.runOnUiThread(activity) { () =>
-      if(rfCommService.mNfcAdapter!=null && rfCommService.mNfcAdapter.isEnabled) {
-        rfCommService.mNfcAdapter.disableForegroundDispatch(activity)
-        rfCommService.mNfcAdapter.setNdefPushMessage(null, activity)
-        if(D) Log.i(TAG, "onPause setNdefPushMessage null done")
-      }
-
       if(rfCommService!=null) {
+        if(rfCommService.mNfcAdapter!=null && rfCommService.mNfcAdapter.isEnabled) {
+          rfCommService.mNfcAdapter.disableForegroundDispatch(activity)
+          rfCommService.mNfcAdapter.setNdefPushMessage(null, activity)
+          if(D) Log.i(TAG, "onPause setNdefPushMessage null done")
+        }
         rfCommService.acceptAndConnect = false
         Log.i(TAG, "onPause rfCommService.acceptAndConnect cleared")
         // todo tmtmtm: if this is just a "small onPause" (triggered by nfc-system-animation)
@@ -724,6 +724,9 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
   private var btBroadcastReceiver:BroadcastReceiver = null
   private var arrayAdapter:ArrayAdapter[String] = null
 
+  // todo: must render 2nd line of listview entry (deviceAddr + comment) much smaller
+  // todo: would be nice if we could make it, so that btName and wifiName are the same
+
   def addAllDevices(setArrayAdapter:ArrayAdapter[String]) {
     arrayAdapter = setArrayAdapter
     // now fill our listView with all possible (paired/stored/discovered) devices of the requested device types
@@ -754,10 +757,11 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
                 if(bluetoothDevice.getName!=null && bluetoothDevice.getName.length>0) {
                   if(pairedDevicesShadowHashMap.getOrElse(bluetoothDevice.getAddress,null)==null) {
                     pairedDevicesShadowHashMap += bluetoothDevice.getAddress -> bluetoothDevice.getName
-                    arrayAdapter.add(bluetoothDevice.getName+"\n"+bluetoothDevice.getAddress+" bt")
+                    arrayAdapter.add(bluetoothDevice.getName+"\n"+bluetoothDevice.getAddress+" bt discovered")
                     if(D) Log.i(TAG, "btBroadcastReceiver BluetoothDevice.ACTION_FOUND name=["+bluetoothDevice.getName+"] addr="+bluetoothDevice.getAddress+
                                      " arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size)
                   }
+                  // else todo: replace "bt paired" with "bt paired discovered"
                 }
               }
             }
@@ -787,7 +791,7 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
               if(D) Log.i(TAG, "add wifiP2p device deviceName="+wifiP2pDevice.deviceName+" deviceAddress="+wifiP2pDevice.deviceAddress+
                               " status="+wifiP2pDevice.status+" "+(wifiP2pDevice.deviceAddress==rfCommService.p2pRemoteAddressToConnect))
               pairedDevicesShadowHashMap += wifiP2pDevice.deviceAddress -> wifiP2pDevice.deviceName
-              arrayAdapter.add(wifiP2pDevice.deviceName+"\n"+wifiP2pDevice.deviceAddress+" wifi")
+              arrayAdapter.add(wifiP2pDevice.deviceName+"\n"+wifiP2pDevice.deviceAddress+" wifi discovered")
               if(D) Log.i(TAG, "add p2pWifi, arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size+" ############")
             }
           }
