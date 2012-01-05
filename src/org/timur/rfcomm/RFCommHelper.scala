@@ -733,7 +733,7 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
   // todo: must render 2nd line of listview entry (deviceAddr + comment) using smaller font
   // todo: make it, so that wifiName is the same as btName
 
-  def addAllDevices(setArrayAdapter:ArrayAdapter[String]) {
+  def addAllDevices(setArrayAdapter:ArrayAdapter[String], audioMiniAlert:MediaPlayer) {
     arrayAdapter = setArrayAdapter
     // now fill our listView with all possible (paired/stored/discovered) devices of the requested device types
     // we use pairedDevicesShadowHashMap[addr,name] as a shadow-HashMap containing all listed devices, so we can prevent double-entries in the visible arrayAdapter
@@ -766,6 +766,8 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
                     arrayAdapter.add(bluetoothDevice.getName+"\n"+bluetoothDevice.getAddress+" bt discovered")
                     if(D) Log.i(TAG, "btBroadcastReceiver BluetoothDevice.ACTION_FOUND name=["+bluetoothDevice.getName+"] addr="+bluetoothDevice.getAddress+
                                      " arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size)
+                    if(audioMiniAlert!=null)
+                      audioMiniAlert.start
                   }
                   // else todo: replace "bt paired" with "bt paired discovered"
                 }
@@ -800,6 +802,8 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
               pairedDevicesShadowHashMap += wifiP2pDevice.deviceAddress -> wifiP2pDevice.deviceName
               arrayAdapter.add(wifiP2pDevice.deviceName+"\n"+wifiP2pDevice.deviceAddress+" wifi discovered")
               if(D) Log.i(TAG, "add p2pWifi, arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size+" ############")
+              if(audioMiniAlert!=null)
+                audioMiniAlert.start
             }
           }
         }
