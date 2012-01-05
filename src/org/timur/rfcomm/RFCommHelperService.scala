@@ -141,7 +141,8 @@ class RFCommHelperService extends android.app.Service {
   var p2pRemoteAddressToConnect:String = null   // needed to carry the target ip-p2p-addr from ACTION_NDEF_DISCOVERED/discoverPeers() to WIFI_P2P_PEERS_CHANGED_ACTION/wifiP2pManager.connect()
   var p2pRemoteNameToConnect:String = null      // used for information purposes only
   var p2pOnlyIfLocalAddrBiggerThatRemote:Boolean = false      // used for information purposes only
-  var prefsSharedEditor:SharedPreferences.Editor = null
+  var prefsSharedP2pBtEditor:SharedPreferences.Editor = null
+  var prefsSharedP2pWifiEditor:SharedPreferences.Editor = null
 
   // private objects
   private val TAG = "RFCommHelperService"
@@ -245,8 +246,9 @@ class RFCommHelperService extends android.app.Service {
 
     // store target deviceAddr and deviceName to "org.timur.p2pDevices" preferences
     if(newRemoteDevice.getName!=null && newRemoteDevice.getName.length>0) {
-      if(prefsSharedEditor!=null) {
-        prefsSharedEditor.putString(newRemoteDevice.getAddress,newRemoteDevice.getName)
+      if(prefsSharedP2pBtEditor!=null) {
+        prefsSharedP2pBtEditor.putString(newRemoteDevice.getAddress,newRemoteDevice.getName)
+        prefsSharedP2pBtEditor.commit
       }
     }
 
@@ -508,10 +510,11 @@ class RFCommHelperService extends android.app.Service {
         if(D) Log.i(TAG, "AcceptThread btSocket="+btSocket+" acceptAndConnect="+acceptAndConnect)
         if(btSocket!=null) {
           // store the deviceAddr and deviceName of the calling bt device
-          if(prefsSharedEditor!=null) {
+          if(prefsSharedP2pBtEditor!=null) {
             val btDevice = btSocket.getRemoteDevice
             if(btDevice.getName!=null && btDevice.getName.length>0) {
-              prefsSharedEditor.putString(btDevice.getAddress,btDevice.getName)
+              prefsSharedP2pBtEditor.putString(btDevice.getAddress,btDevice.getName)
+              prefsSharedP2pBtEditor.commit
             }
           }
 
@@ -831,8 +834,9 @@ class RFCommHelperService extends android.app.Service {
                     if(p2pRemoteAddressToConnect!=null && wifiP2pDevice.deviceAddress==p2pRemoteAddressToConnect) {
                       // store target deviceAddr and deviceName to "org.timur.p2pDevices" preferences
                       if(wifiP2pDevice.deviceName!=null && wifiP2pDevice.deviceName.length>0) {
-                        if(prefsSharedEditor!=null) {
-                          prefsSharedEditor.putString(wifiP2pDevice.deviceAddress,wifiP2pDevice.deviceName)
+                        if(prefsSharedP2pWifiEditor!=null) {
+                          prefsSharedP2pWifiEditor.putString(wifiP2pDevice.deviceAddress,wifiP2pDevice.deviceName)
+                          prefsSharedP2pWifiEditor.commit
                         }
                       }
 

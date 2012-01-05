@@ -92,9 +92,13 @@ object RFCommHelper {
   val RADIO_NFC:Int = 8
 }
 
-class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler, 
-                   prefsPrivate:SharedPreferences, prefsShared:SharedPreferences,
-                   allOK:() => Unit, allFailed:() => Unit, 
+class RFCommHelper(activity:Activity, 
+                   msgFromServiceHandler:android.os.Handler, 
+                   prefsPrivate:SharedPreferences, 
+                   prefsSharedP2pBt:SharedPreferences, 
+                   prefsSharedP2pWifi:SharedPreferences,
+                   allOK:() => Unit, 
+                   allFailed:() => Unit, 
                    appService:RFServiceTrait,
                    activityRuntimeClass:java.lang.Class[Activity],
                    audioConfirmSound:MediaPlayer,
@@ -108,12 +112,11 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
   private val TAG = "RFCommHelper"
   private val D = true
   private val REQUEST_ENABLE_BT = 101
+  private val prefsPrivateEditor = prefsPrivate.edit
+
   private var activityDestroyed = false
   private var radioDialogPossibleAndNotYetShown = false
   private var wifiDirectBroadcastReceiver:BroadcastReceiver = null
-
-  private val prefsPrivateEditor = prefsPrivate.edit
- 
 
   private val intentFilter = new IntentFilter()
   if(android.os.Build.VERSION.SDK_INT>=14) {
@@ -155,7 +158,8 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
       rfCommService.activityRuntimeClass = activityRuntimeClass
       rfCommService.activityMsgHandler = msgFromServiceHandler
       rfCommService.appService = appService
-      rfCommService.prefsSharedEditor = prefsShared.edit
+      rfCommService.prefsSharedP2pBtEditor = prefsSharedP2pBt.edit
+      rfCommService.prefsSharedP2pWifiEditor = prefsSharedP2pWifi.edit
 
       if(D) Log.i(TAG, "onCreate onServiceConnected prefsPrivate="+prefsPrivate+" radioTypeWanted & RFCommHelper.RADIO_BT="+(radioTypeWanted & RFCommHelper.RADIO_BT)+" ###############")
       if(prefsPrivate!=null) {
@@ -819,6 +823,51 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
             //if(D) Log.i(TAG, "wifiP2pManager.discoverPeers onSuccess")
           }
         })
+      }
+    }
+
+    if(rfCommService.desiredBluetooth) {
+      // todo: 6. add all prev connected bt devices
+      if(D) Log.i(TAG, "read prefsSharedP2pBt...")
+      val p2pBtMap = prefsSharedP2pBt.getAll   // :map[String, ?]
+      val p2pBtKeySet = p2pBtMap.keySet
+      val p2pBtIterator = p2pBtKeySet.iterator
+      while(p2pBtIterator.hasNext) {
+        val addr = p2pBtIterator.next
+        val name = prefsSharedP2pBt.getString(addr,null)
+        //if(D) Log.i(TAG, "read prefsSharedP2pBt "+addr+" = "+name)
+        if(name!=null && name.length>0) {
+          if(pairedDevicesShadowHashMap.getOrElse(addr,null)==null) {
+            pairedDevicesShadowHashMap += addr -> name
+            arrayAdapter.add(name+"\n"+addr+" bt stored")
+            if(D) Log.i(TAG, "prefsSharedP2pBt name=["+name+"] addr="+addr+" arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size)
+            //if(audioMiniAlert!=null)
+            //  audioMiniAlert.start
+          }
+        }
+      }
+    }
+
+    if(rfCommService.desiredWifiDirect) {
+      // todo: 7. add all prev connected wifi devices
+      // 
+      if(D) Log.i(TAG, "read prefsSharedP2pWifi...")
+      val p2pWifiMap = prefsSharedP2pWifi.getAll   // :map[String, ?]
+      val p2pWifiKeySet = p2pWifiMap.keySet
+      val p2pWifiIterator = p2pWifiKeySet.iterator
+      while(p2pWifiIterator.hasNext) {
+        val addr = p2pWifiIterator.next
+        val name = prefsSharedP2pWifi.getString(addr,null)
+        //if(D) Log.i(TAG, "read prefsSharedP2pWifi "+addr+" = "+name)
+        if(name!=null && name.length>0) {
+          if(pairedDevicesShadowHashMap.getOrElse(addr,null)==null) {
+            pairedDevicesShadowHashMap += addr -> name
+            arrayAdapter.add(name+"\n"+addr+" wifi stored")
+            if(D) Log.i(TAG, "prefsSharedP2pWifi name=["+name+"] addr="+addr+" arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size)
+            //if(audioMiniAlert!=null)
+            //  audioMiniAlert.start
+          }
+        }
       }
     }
   }
