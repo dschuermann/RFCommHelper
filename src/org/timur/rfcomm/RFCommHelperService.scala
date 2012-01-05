@@ -45,6 +45,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.IntentFilter.MalformedMimeTypeException
 import android.content.BroadcastReceiver
+import android.content.SharedPreferences
 import android.os.IBinder
 import android.os.Bundle
 import android.os.Handler
@@ -140,6 +141,7 @@ class RFCommHelperService extends android.app.Service {
   var p2pRemoteAddressToConnect:String = null   // needed to carry the target ip-p2p-addr from ACTION_NDEF_DISCOVERED/discoverPeers() to WIFI_P2P_PEERS_CHANGED_ACTION/wifiP2pManager.connect()
   var p2pRemoteNameToConnect:String = null      // used for information purposes only
   var p2pOnlyIfLocalAddrBiggerThatRemote:Boolean = false      // used for information purposes only
+  var prefsSharedEditor:SharedPreferences.Editor = null
 
   // private objects
   private val TAG = "RFCommHelperService"
@@ -220,6 +222,7 @@ class RFCommHelperService extends android.app.Service {
     setState(RFCommHelperService.STATE_LISTEN)   // will send MESSAGE_STATE_CHANGE to activity
   }
 
+  // todo: explain what is the difference to the method above
   def stopAcceptThread() = synchronized {
     if(D) Log.i(TAG, "stopAcceptThread mSecureAcceptThread="+mSecureAcceptThread)
     if(mSecureAcceptThread != null) {
@@ -238,7 +241,14 @@ class RFCommHelperService extends android.app.Service {
 
     connectedRadio = 1 // bt
     state = RFCommHelperService.STATE_CONNECTING    // tmtmtm?
-    if(D) Log.i(TAG, "connect() remoteAddr="+newRemoteDevice.getAddress()+" name="+newRemoteDevice.getName+" pairedBtOnly="+pairedBtOnly)
+    if(D) Log.i(TAG, "connect() remoteAddr="+newRemoteDevice.getAddress+" name="+newRemoteDevice.getName+" pairedBtOnly="+pairedBtOnly)
+
+    // store target deviceAddr and deviceName to "org.timur.p2pDevices" preferences
+    if(newRemoteDevice.getName!=null && newRemoteDevice.getName.length>0) {
+      if(prefsSharedEditor!=null) {
+        prefsSharedEditor.putString(newRemoteDevice.getAddress,newRemoteDevice.getName)
+      }
+    }
 
     if(reportConnectState && activityMsgHandler!=null) {
       val msg = activityMsgHandler.obtainMessage(RFCommHelperService.CONNECTION_START)
@@ -474,18 +484,18 @@ class RFCommHelperService extends android.app.Service {
 
       if(D) Log.i(TAG, "AcceptThread run pairedBtOnly="+pairedBtOnly+" mmServerSocket="+mmServerSocket+" ################")
       setName("AcceptThread"+pairedBtOnly)
-      var socket:BluetoothSocket = null
+      var btSocket:BluetoothSocket = null
 
       // Listen to the server socket if we're not connected
       while(mmServerSocket!=null) {
         if(D) Log.i(TAG, "AcceptThread run loop pairedBtOnly="+pairedBtOnly+" mmServerSocket="+mmServerSocket+" ################")
         try {
           synchronized {
-            socket = null
+            btSocket = null
             if(mmServerSocket!=null) {
               // This is a blocking call and will only return on a successful connection or an exception
-              socket = mmServerSocket.accept
-              if(D) Log.i(TAG, "AcceptThread run loop after accept, socket="+socket+" ################")
+              btSocket = mmServerSocket.accept
+              if(D) Log.i(TAG, "AcceptThread run loop after accept, btSocket="+btSocket+" ################")
             }
           }
         } catch {
@@ -495,14 +505,23 @@ class RFCommHelperService extends android.app.Service {
               Log.e(TAG, "AcceptThread run pairedBtOnly="+pairedBtOnly+" state="+state+" ioex="+ioex)
         }
 
-        if(D) Log.i(TAG, "AcceptThread socket="+socket+" acceptAndConnect="+acceptAndConnect)
-        if(socket!=null) {
-          // a bt connection is technically possible and can be accepted
+        if(D) Log.i(TAG, "AcceptThread btSocket="+btSocket+" acceptAndConnect="+acceptAndConnect)
+        if(btSocket!=null) {
+          // store the deviceAddr and deviceName of the calling bt device
+          if(prefsSharedEditor!=null) {
+            val btDevice = btSocket.getRemoteDevice
+            if(btDevice.getName!=null && btDevice.getName.length>0) {
+              prefsSharedEditor.putString(btDevice.getAddress,btDevice.getName)
+            }
+          }
+
+          // a bt connection is now technically possible and can be accepted
           // note: this is where we can decide to acceptAndConnect (or not)
           if(!acceptAndConnect) {
+            // our activity is currently paused
             if(D) Log.i(TAG, "AcceptThread - denying incoming connect request, acceptAndConnect="+acceptAndConnect+" activity="+activity)
             // hangup
-            socket.close
+            btSocket.close
 
             if(activity!=null) {
               activity.runOnUiThread(new Runnable() {
@@ -527,7 +546,7 @@ class RFCommHelperService extends android.app.Service {
           } else {
             // activity is not paused
             RFCommHelperService.this synchronized {
-              connectedBt(socket, socket.getRemoteDevice, pairedBtOnly)
+              connectedBt(btSocket, btSocket.getRemoteDevice, pairedBtOnly)
             }
           }
         }
@@ -756,8 +775,7 @@ class RFCommHelperService extends android.app.Service {
     override def onReceive(activity:Context, intent:Intent) {
       val action = intent.getAction
 
-      if(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION == action) {
-        // p2pWifi functionality has now been enabled (or disabled)
+      if(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION == action) {                              // p2pWifi has been enabled (or disabled)
 
         val state = intent.getIntExtra(WifiP2pManager.EXTRA_WIFI_STATE, -1)
         if(D) Log.i(TAG, "WIFI_P2P_STATE_CHANGED_ACTION state="+state+" ####")
@@ -773,9 +791,7 @@ class RFCommHelperService extends android.app.Service {
           isWifiP2pEnabled=false
         }
 
-      } else if(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION == action) {
-        // this device has now a p2pWifi-connection (or it has lost it)
-        // we get our own dynamic p2p-mac-addr
+      } else if(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION == action) {                 // our device now has a p2pWifi mac-addr (or has lost it)
 
         val wifiP2pDevice = intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_DEVICE).asInstanceOf[WifiP2pDevice]
         if(localP2pWifiAddr==null || localP2pWifiAddr!=wifiP2pDevice.deviceAddress) {
@@ -785,9 +801,7 @@ class RFCommHelperService extends android.app.Service {
           nfcServiceSetup
         }
 
-      } else if (WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION == action) {
-        // an update to the situation with visible p2pWifi devices
-        // we can (must?) use this to to connect to one of the visible devices
+      } else if (WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION == action) {                      // there is an update for the discovered p2pWifi devices
 
         if(D) Log.i(TAG, "WIFI_P2P_PEERS_CHANGED_ACTION number of p2p peers changed ####")
         discoveringPeersInProgress = false
@@ -810,11 +824,18 @@ class RFCommHelperService extends android.app.Service {
                   if(wifiP2pDevice != null) {
                     //if(D) Log.i(TAG, "device "+i+" deviceName="+wifiP2pDevice.deviceName+" deviceAddress="+wifiP2pDevice.deviceAddress+" status="+wifiP2pDevice.status+" "+(wifiP2pDevice.deviceAddress==p2pRemoteAddressToConnect)+" ####")
                     // status: connected=0, invited=1, failed=2, available=3
-                    
+                   
                     if(p2pWifiDiscoveredCallbackFkt!=null)
                       p2pWifiDiscoveredCallbackFkt(wifiP2pDevice)
 
                     if(p2pRemoteAddressToConnect!=null && wifiP2pDevice.deviceAddress==p2pRemoteAddressToConnect) {
+                      // store target deviceAddr and deviceName to "org.timur.p2pDevices" preferences
+                      if(wifiP2pDevice.deviceName!=null && wifiP2pDevice.deviceName.length>0) {
+                        if(prefsSharedEditor!=null) {
+                          prefsSharedEditor.putString(wifiP2pDevice.deviceAddress,wifiP2pDevice.deviceName)
+                        }
+                      }
+
                       if(p2pOnlyIfLocalAddrBiggerThatRemote && localP2pWifiAddr<p2pRemoteAddressToConnect) {
                         if(D) Log.i(TAG, "onPeersAvailable - local="+localP2pWifiAddr+" < remote="+p2pRemoteAddressToConnect+" - stay passive - let other device connect() ########################")
                         p2pRemoteAddressToConnect = null
@@ -864,8 +885,7 @@ class RFCommHelperService extends android.app.Service {
           })
         }
 
-      } else if(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION==action) {
-        // we got p2pWifi connected (or disconnected)
+      } else if(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION==action) {                        // we got p2pWifi client/client connected or disconnected
         // as a result of us (or some other device) calling wifiP2pManager.connect() 
         // (sometimes failes to be called)
 
@@ -890,7 +910,7 @@ class RFCommHelperService extends android.app.Service {
             if(D) Log.i(TAG, "WIFI_P2P_CONNECTION_CHANGED_ACTION we are now disconnected, we were disconnect already")
             return
           }
-          // we think we are connected, but now we are being disconnected
+          // we thought we are connected, but now we have been disconnected
           if(D) Log.i(TAG, "WIFI_P2P_CONNECTION_CHANGED_ACTION we are now disconnected, set p2pConnected=false")
           p2pConnected = false
           return
@@ -964,15 +984,16 @@ class RFCommHelperService extends android.app.Service {
                     // which device becomes the Group client is random, but this is the device we run our client socket on...
                     // by convention, we make the Group client (using the client socket) also the filetransfer-actor (will start the delivery)
                     // because we are NOT the groupOwner, the groupOwnerAddress is the address of the OTHER device
+
                     val SOCKET_TIMEOUT = 5000
+                    // we wait up to 5000 ms for the connection...
+
                     val host = wifiP2pInfo.groupOwnerAddress
                     socket = new Socket()
                     try {
-                      //Log.d(TAG, "client socket opened")
                       socket.bind(null)
                       socket.connect(new InetSocketAddress(host, port), SOCKET_TIMEOUT)
-                      // we wait up to 5000 ms for the connection... if we don't get connected, an ioexception is thrown                  
-                      // otherwise we continue here by connecting to the other peer
+                      // if we don't get connected, an ioexception is thrown, otherwise we continue here by connecting to the other peer
                       connectedWifi(socket, actor=true, closeDownP2p)
                     } catch {
                       case ioException:IOException =>

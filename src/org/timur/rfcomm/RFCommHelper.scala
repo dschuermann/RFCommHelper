@@ -93,28 +93,27 @@ object RFCommHelper {
 }
 
 class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler, 
-                   prefSettings:SharedPreferences = null, prefSettingsEditor:SharedPreferences.Editor = null,
+                   prefsPrivate:SharedPreferences, prefsShared:SharedPreferences,
                    allOK:() => Unit, allFailed:() => Unit, 
                    appService:RFServiceTrait,
                    activityRuntimeClass:java.lang.Class[Activity],
                    audioConfirmSound:MediaPlayer,
                    radioTypeWanted:Int) {
 
-  private val TAG = "RFCommHelper"
-  private val D = true
-
-  private val REQUEST_ENABLE_BT = 101
-
   var rfCommService:RFCommHelperService = null    // activity calls stopActiveConnection -> mConnectThread.cancel
-
   var connectAttemptFromNfc = false
   var wifiP2pManager:WifiP2pManager = null
-
-  private var activityDestroyed = false
-
   var mBluetoothAdapter:BluetoothAdapter = null
+
+  private val TAG = "RFCommHelper"
+  private val D = true
+  private val REQUEST_ENABLE_BT = 101
+  private var activityDestroyed = false
   private var radioDialogPossibleAndNotYetShown = false
   private var wifiDirectBroadcastReceiver:BroadcastReceiver = null
+
+  private val prefsPrivateEditor = prefsPrivate.edit
+ 
 
   private val intentFilter = new IntentFilter()
   if(android.os.Build.VERSION.SDK_INT>=14) {
@@ -156,17 +155,26 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
       rfCommService.activityRuntimeClass = activityRuntimeClass
       rfCommService.activityMsgHandler = msgFromServiceHandler
       rfCommService.appService = appService
+      rfCommService.prefsSharedEditor = prefsShared.edit
 
-      if(prefSettings!=null) {
-        if((radioTypeWanted & RFCommHelper.RADIO_BT)!=0)
-          rfCommService.desiredBluetooth = prefSettings.getBoolean("radioBluetooth", true)
+      if(D) Log.i(TAG, "onCreate onServiceConnected prefsPrivate="+prefsPrivate+" radioTypeWanted & RFCommHelper.RADIO_BT="+(radioTypeWanted & RFCommHelper.RADIO_BT)+" ###############")
+      if(prefsPrivate!=null) {
+        // note: the desiredRADIO settings are off by default
+        // if the parent app requests any of these settings via radioTypeWanted, the prefsPrivate are read
+        // if there was no persistent setting yet, the default is then true
+      
+        if((radioTypeWanted & RFCommHelper.RADIO_BT)!=0) {
+          rfCommService.desiredBluetooth = prefsPrivate.getBoolean("radioBluetooth", true)
+          if(D) Log.i(TAG, "onCreate onServiceConnected rfCommService.desiredBluetooth="+rfCommService.desiredBluetooth)
+        }
         if((radioTypeWanted & RFCommHelper.RADIO_P2PWIFI)!=0)
-          rfCommService.desiredWifiDirect = prefSettings.getBoolean("radioWifiDirect", true)
+          rfCommService.desiredWifiDirect = prefsPrivate.getBoolean("radioWifiDirect", true)
         if((radioTypeWanted & RFCommHelper.RADIO_NFC)!=0)
-          rfCommService.desiredNfc = prefSettings.getBoolean("radioNfc", true)
+          rfCommService.desiredNfc = prefsPrivate.getBoolean("radioNfc", true)
       }
 
       // everything is OK!
+      if(D) Log.i(TAG, "onCreate onServiceConnected -> allOK")
       allOK()
     } 
   } 
@@ -200,14 +208,13 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
   }
 
   def storeRadioSelection(selectedBt:Boolean, selectedWifi:Boolean, selectedNfc:Boolean) {
-    if(prefSettingsEditor!=null) {
-      if((radioTypeWanted&RFCommHelper.RADIO_BT)!=0)
-        prefSettingsEditor.putBoolean("radioBluetooth",selectedBt)
-      if((radioTypeWanted&RFCommHelper.RADIO_P2PWIFI)!=0)
-        prefSettingsEditor.putBoolean("radioWifiDirect",selectedWifi)
-      if((radioTypeWanted&RFCommHelper.RADIO_NFC)!=0)
-        prefSettingsEditor.putBoolean("radioNfc",selectedNfc)
-      prefSettingsEditor.commit
+    if(D) Log.i(TAG, "storeRadioSelection prefsPrivateEditor="+prefsPrivateEditor+" selectedBt="+selectedBt+" selectedWifi="+selectedWifi+" selectedNfc="+selectedNfc)
+    if(prefsPrivateEditor!=null) {
+      prefsPrivateEditor.putBoolean("radioBluetooth",selectedBt)
+      prefsPrivateEditor.putBoolean("radioWifiDirect",selectedWifi)
+      prefsPrivateEditor.putBoolean("radioNfc",selectedNfc)
+      prefsPrivateEditor.commit
+      if(D) Log.i(TAG, "storeRadioSelection commited")
     }
   }
   
@@ -229,6 +236,8 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
     radioSelectDialogLayout.setPadding(40, 40, 40, 40)
     radioSelectDialogLayout.setOrientation(LinearLayout.VERTICAL)
 
+
+    if(D) Log.i(TAG, "radioDialog() rfCommService.desiredBluetooth="+rfCommService.desiredBluetooth)
     val radioBluetoothCheckbox = new CheckBox(activity)
     if((radioTypeWanted&RFCommHelper.RADIO_BT)!=0) {
       radioBluetoothCheckbox.setText("Bluetooth not available")
@@ -433,13 +442,6 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
       } else {
         radioDialogPossibleAndNotYetShown = false
         initBtNfc  // start bt-accept-thread and init-nfc
-        // prepare desired-switches for use with ACTION_NDEF_DISCOVERED
-        if((radioTypeWanted & RFCommHelper.RADIO_BT)!=0)
-          rfCommService.desiredBluetooth = true
-        if((radioTypeWanted & RFCommHelper.RADIO_P2PWIFI)!=0)
-          rfCommService.desiredWifiDirect = true
-        if((radioTypeWanted & RFCommHelper.RADIO_NFC)!=0)
-          rfCommService.desiredNfc = true
       }
 
     } else {
@@ -455,10 +457,10 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
 
     if(rfCommService.mNfcAdapter!=null && rfCommService.mNfcAdapter.isEnabled) {
       if(rfCommService.nfcPendingIntent!=null) {
-        // This method must be called from the main thread, and only when the activity is in the foreground (resumed). 
-        // Also, activities must call disableForegroundDispatch(Activity) before the completion of their onPause() 
-        // callback to disable foreground dispatch after it has been enabled. 
         AndrTools.runOnUiThread(activity) { () =>
+          // enableForegroundDispatch() must be called from the main thread, and only when the activity is in the foreground (resumed). 
+          // Also, activities must call disableForegroundDispatch(Activity) before the completion of their onPause() 
+          // callback to disable foreground dispatch after it has been enabled. 
           rfCommService.mNfcAdapter.enableForegroundDispatch(activity, rfCommService.nfcPendingIntent, rfCommService.nfcFilters, rfCommService.nfcTechLists)
           //if(D) Log.i(TAG, "onResume nfc enableForegroundDispatch done")
         }
@@ -633,7 +635,7 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
                 // our activity may still be in onPause mode due to NFC activity: sleep a bit before 
                 if(D) Log.i(TAG, "onNewIntent NdefAction connecting ...")
 
-                //connectAttemptFromNfc=true    // todo ???
+                connectAttemptFromNfc=true    // parent app on connect fail will ask user "fall back to OPP?" only if connect was NOT initiated by nfc
                 rfCommService.connectBt(remoteBluetoothDevice)
                 // connectBt() will send CONNECTION_START to the activity, which will draw the connect-progress animation
 
