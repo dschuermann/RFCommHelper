@@ -747,7 +747,51 @@ class RFCommHelper(activity:Activity,
     if(D) Log.i(TAG, "fill listView with all devices, arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size+" ####################################")
 
     if(rfCommService.desiredBluetooth) {
-      // 1. get list of paired bt devices from rfCommHelper
+      // 1. add all prev connected bt devices
+      if(D) Log.i(TAG, "read prefsSharedP2pBt...")
+      val p2pBtMap = prefsSharedP2pBt.getAll   // :map[String, ?]
+      val p2pBtKeySet = p2pBtMap.keySet
+      val p2pBtIterator = p2pBtKeySet.iterator
+      while(p2pBtIterator.hasNext) {
+        val addr = p2pBtIterator.next
+        val name = prefsSharedP2pBt.getString(addr,null)
+        //if(D) Log.i(TAG, "read prefsSharedP2pBt "+addr+" = "+name)
+        if(name!=null && name.length>0) {
+          if(pairedDevicesShadowHashMap.getOrElse(addr,null)==null) {
+            pairedDevicesShadowHashMap += addr -> name
+            arrayAdapter.add(name+"\n"+addr+" bt stored")
+            if(D) Log.i(TAG, "prefsSharedP2pBt name=["+name+"] addr="+addr+" arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size)
+            //if(audioMiniAlert!=null)
+            //  audioMiniAlert.start
+          }
+        }
+      }
+    }
+
+    if(rfCommService.desiredWifiDirect) {
+      // 2. add all prev connected wifi devices
+      if(D) Log.i(TAG, "read prefsSharedP2pWifi...")
+      val p2pWifiMap = prefsSharedP2pWifi.getAll   // :map[String, ?]
+      val p2pWifiKeySet = p2pWifiMap.keySet
+      val p2pWifiIterator = p2pWifiKeySet.iterator
+      while(p2pWifiIterator.hasNext) {
+        val addr = p2pWifiIterator.next
+        val name = prefsSharedP2pWifi.getString(addr,null)
+        //if(D) Log.i(TAG, "read prefsSharedP2pWifi "+addr+" = "+name)
+        if(name!=null && name.length>0) {
+          if(pairedDevicesShadowHashMap.getOrElse(addr,null)==null) {
+            pairedDevicesShadowHashMap += addr -> name
+            arrayAdapter.add(name+"\n"+addr+" wifi stored")
+            if(D) Log.i(TAG, "prefsSharedP2pWifi name=["+name+"] addr="+addr+" arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size)
+            //if(audioMiniAlert!=null)
+            //  audioMiniAlert.start
+          }
+        }
+      }
+    }
+
+    if(rfCommService.desiredBluetooth) {
+      // 3. get list of paired bt devices from rfCommHelper
       val pairedDevicesArrayListOfStrings = getBtPairedDevices  // java.util.ArrayList[String], "name/naddr"
       if(pairedDevicesArrayListOfStrings!=null) {
         if(D) Log.i(TAG, "add BtPairedDevices count="+pairedDevicesArrayListOfStrings.size+" arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size)
@@ -756,9 +800,7 @@ class RFCommHelper(activity:Activity,
             addDevice(pairedDevicesArrayListOfStrings.get(i))
       }
 
-      // todo: 2. get list of stored (previously connected) bt devices
-
-      // 3. start handler for all newly discovered bt devices
+      // 4. start handler for all newly discovered bt devices
       if(mBluetoothAdapter!=null) {
         btBroadcastReceiver = new BroadcastReceiver() {
           override def onReceive(context:Context, intent:Intent) {
@@ -796,8 +838,6 @@ class RFCommHelper(activity:Activity,
     }
 
     if(rfCommService.desiredWifiDirect) {
-      // todo: 4. get list of previously connected p2pWifi devices
-
       // 5. start handler for freshly discovered p2pWifi devices
       if(wifiP2pManager!=null) {
         rfCommService.p2pWifiDiscoveredCallbackFkt = { wifiP2pDevice =>
@@ -823,51 +863,6 @@ class RFCommHelper(activity:Activity,
             //if(D) Log.i(TAG, "wifiP2pManager.discoverPeers onSuccess")
           }
         })
-      }
-    }
-
-    if(rfCommService.desiredBluetooth) {
-      // todo: 6. add all prev connected bt devices
-      if(D) Log.i(TAG, "read prefsSharedP2pBt...")
-      val p2pBtMap = prefsSharedP2pBt.getAll   // :map[String, ?]
-      val p2pBtKeySet = p2pBtMap.keySet
-      val p2pBtIterator = p2pBtKeySet.iterator
-      while(p2pBtIterator.hasNext) {
-        val addr = p2pBtIterator.next
-        val name = prefsSharedP2pBt.getString(addr,null)
-        //if(D) Log.i(TAG, "read prefsSharedP2pBt "+addr+" = "+name)
-        if(name!=null && name.length>0) {
-          if(pairedDevicesShadowHashMap.getOrElse(addr,null)==null) {
-            pairedDevicesShadowHashMap += addr -> name
-            arrayAdapter.add(name+"\n"+addr+" bt stored")
-            if(D) Log.i(TAG, "prefsSharedP2pBt name=["+name+"] addr="+addr+" arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size)
-            //if(audioMiniAlert!=null)
-            //  audioMiniAlert.start
-          }
-        }
-      }
-    }
-
-    if(rfCommService.desiredWifiDirect) {
-      // todo: 7. add all prev connected wifi devices
-      // 
-      if(D) Log.i(TAG, "read prefsSharedP2pWifi...")
-      val p2pWifiMap = prefsSharedP2pWifi.getAll   // :map[String, ?]
-      val p2pWifiKeySet = p2pWifiMap.keySet
-      val p2pWifiIterator = p2pWifiKeySet.iterator
-      while(p2pWifiIterator.hasNext) {
-        val addr = p2pWifiIterator.next
-        val name = prefsSharedP2pWifi.getString(addr,null)
-        //if(D) Log.i(TAG, "read prefsSharedP2pWifi "+addr+" = "+name)
-        if(name!=null && name.length>0) {
-          if(pairedDevicesShadowHashMap.getOrElse(addr,null)==null) {
-            pairedDevicesShadowHashMap += addr -> name
-            arrayAdapter.add(name+"\n"+addr+" wifi stored")
-            if(D) Log.i(TAG, "prefsSharedP2pWifi name=["+name+"] addr="+addr+" arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size)
-            //if(audioMiniAlert!=null)
-            //  audioMiniAlert.start
-          }
-        }
       }
     }
   }
