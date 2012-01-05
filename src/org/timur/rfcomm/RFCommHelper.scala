@@ -164,12 +164,8 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
     // start bluetooth accept thread
     if(mBluetoothAdapter!=null && mBluetoothAdapter.isEnabled && rfCommService!=null) {
       if(rfCommService.state == RFCommHelperService.STATE_NONE) {
-        var acceptOnlySecureConnectRequests = true
-        // todo: need secure/insecure decission based on handed over app setting
-        //if(prefSettings!=null)
-        //  acceptOnlySecureConnectRequests = prefSettings.getBoolean("acceptOnlySecureConnectRequests",true)
-        if(D) Log.i(TAG, "initBtNfc rfCommService.start acceptOnlySecureConnectReq="+acceptOnlySecureConnectRequests+" ...")
-        rfCommService.start(acceptOnlySecureConnectRequests) // -> bt (new AcceptThread()).start -> run()
+        if(D) Log.i(TAG, "initBtNfc rfCommService.start acceptOnlySecureConnectReq="+rfCommService.pairedBtOnly+" ...")
+        rfCommService.start() // -> bt (new AcceptThread()).start -> run()
       }
 
       msgFromServiceHandler.obtainMessage(RFCommHelperService.UI_UPDATE, -1, -1).sendToTarget

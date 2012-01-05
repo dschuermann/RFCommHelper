@@ -5,7 +5,7 @@ import java.io.OutputStream
 
 trait ConnectedThreadTrait extends Thread {
 
-  def init(mmInStream:InputStream, mmOutStream:OutputStream, socketType:String, 
+  def init(mmInStream:InputStream, mmOutStream:OutputStream, pairedBtOnly:Boolean, 
            localDeviceAddr:String, localDeviceName:String, 
            remoteDeviceAddr:String, remoteDeviceName:String, 
            socketCloseFkt:() => Unit)
