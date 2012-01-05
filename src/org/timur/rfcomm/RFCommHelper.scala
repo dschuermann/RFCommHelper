@@ -1,3 +1,23 @@
+/* 
+ * This file is part of RFComm and AnyMime, a program to help you swap
+ * files wirelessly between mobile devices.
+ *
+ * Copyright (C) 2012 Timur Mehrvarz, timur.mehrvarz(a)gmail(.)com
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 package org.timur.rfcomm
 
 import java.net.Socket
@@ -13,7 +33,7 @@ import java.io.InputStreamReader
 import java.util.ArrayList
 import java.util.Date
 
-import scala.collection.mutable // for instance: mutable.HashMap
+import scala.collection.mutable // using mutable.HashMap
 
 import android.util.Log
 import android.content.Context
@@ -560,13 +580,6 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
     return pairedDevicesArrayListOfStrings
   }
 
-/*
-  def getP2pWifiDevices():java.util.ArrayList[String] = {
-    val pairedDevicesArrayListOfStrings = new java.util.ArrayList[String]()
-    return pairedDevicesArrayListOfStrings
-  }
-*/
-
   def onNewIntent(intent:Intent) :Boolean = {
     // all sort of intents may arrive here... for instance ACTION_NDEF_DISCOVERED
     if(D) Log.i(TAG, "onNewIntent intent="+intent+" intent.getAction="+intent.getAction+" mNfcAdapter="+rfCommService.mNfcAdapter)
@@ -713,15 +726,12 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
     return false
   }
 
-
-
-
   private var pairedDevicesShadowHashMap:mutable.HashMap[String,String] = null
   private var btBroadcastReceiver:BroadcastReceiver = null
   private var arrayAdapter:ArrayAdapter[String] = null
 
-  // todo: must render 2nd line of listview entry (deviceAddr + comment) much smaller
-  // todo: would be nice if we could make it, so that btName and wifiName are the same
+  // todo: must render 2nd line of listview entry (deviceAddr + comment) using smaller font
+  // todo: make it, so that wifiName is the same as btName
 
   def addAllDevices(setArrayAdapter:ArrayAdapter[String]) {
     arrayAdapter = setArrayAdapter
@@ -763,7 +773,8 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
             }
             else if(BluetoothAdapter.ACTION_DISCOVERY_FINISHED==actionString) {
               //if(D) Log.i(TAG,"btBroadcastReceiver ACTION_DISCOVERY_FINISHED arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size+" ############")
-              mBluetoothAdapter.startDiscovery
+              if(btBroadcastReceiver!=null)
+                mBluetoothAdapter.startDiscovery
             }
           }
         }
@@ -840,6 +851,5 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
       }
     }
   }
-
 }
 

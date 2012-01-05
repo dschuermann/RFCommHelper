@@ -1,8 +1,8 @@
 /*
- * This file is part of AnyMime, a program to help you swap files
- * wirelessly between mobile devices.
+ * This file is part of RFComm and AnyMime, a program to help you swap
+ * files wirelessly between mobile devices.
  *
- * Copyright (C) 2011 Timur Mehrvarz, timur.mehrvarz(a)gmail(.)com
+ * Copyright (C) 2012 Timur Mehrvarz, timur.mehrvarz(a)gmail(.)com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -161,7 +161,6 @@ class RFCommHelperService extends android.app.Service {
   private val localBinder = new LocalBinder
   override def onBind(intent:Intent) :IBinder = localBinder 
 
-
   override def onCreate() {
     //if(D) Log.i(TAG, "onCreate")
     // note: our service is started via bindService() from RFCommHelper constructor (from activity onCreate())
@@ -211,8 +210,7 @@ class RFCommHelperService extends android.app.Service {
 
   // called by onDestroy() + by activity (on MESSAGE_YOURTURN)
   def stopActiveConnection() = synchronized {
-    if(D) Log.i(TAG, "stopActiveConnection mConnectThread="+mConnectThread
-                    +" mSecureAcceptThread="+mSecureAcceptThread)
+    if(D) Log.i(TAG, "stopActiveConnection mConnectThread="+mConnectThread+" mSecureAcceptThread="+mSecureAcceptThread+" ##########")
     if(mConnectThread != null) {
       mConnectThread.cancel
       mConnectThread = null
@@ -228,9 +226,6 @@ class RFCommHelperService extends android.app.Service {
       mSecureAcceptThread = null
     }
   }
-
-
-
 
   // called by the activity: options menu "connect" -> onActivityResult() -> connectDevice()
   // called by the activity: as a result of NfcAdapter.ACTION_NDEF_DISCOVERED
@@ -382,7 +377,6 @@ class RFCommHelperService extends android.app.Service {
       val remoteWifiNameString = remoteSocketAddr.getHostName
       // convert spaces to underlines in device name (some android activities, for instance the browser, dont like encoded spaces =%20 in file pathes)
       val myRemoteWifiNameString = remoteWifiNameString.replaceAll(" ","_")
-
       val localSocketAddr = socket.getLocalSocketAddress.asInstanceOf[InetSocketAddress]
       val localWifiAddrString = localSocketAddr.getAddress.getHostAddress
       val localWifiNameString = localSocketAddr.getHostName
@@ -520,13 +514,13 @@ class RFCommHelperService extends android.app.Service {
             }
 
             try { Thread.sleep(100); } catch { case ex:Exception => }
-            if(D) Log.i(TAG, "AcceptThread - after denying +100 ms acceptAndConnect="+acceptAndConnect+" ===================")
+            if(D) Log.i(TAG, "AcceptThread - after denying +100 ms acceptAndConnect="+acceptAndConnect)
             try { Thread.sleep(100); } catch { case ex:Exception => }
-            if(D) Log.i(TAG, "AcceptThread - after denying +200 ms acceptAndConnect="+acceptAndConnect+" ===================")
+            if(D) Log.i(TAG, "AcceptThread - after denying +200 ms acceptAndConnect="+acceptAndConnect)
             try { Thread.sleep(300); } catch { case ex:Exception => }
-            if(D) Log.i(TAG, "AcceptThread - after denying +500 ms acceptAndConnect="+acceptAndConnect+" ===================")
+            if(D) Log.i(TAG, "AcceptThread - after denying +500 ms acceptAndConnect="+acceptAndConnect)
             try { Thread.sleep(300); } catch { case ex:Exception => }
-            if(D) Log.i(TAG, "AcceptThread - after denying +800 ms acceptAndConnect="+acceptAndConnect+" ===================")
+            if(D) Log.i(TAG, "AcceptThread - after denying +800 ms acceptAndConnect="+acceptAndConnect)
 
           } else {
             // activity is not paused
@@ -591,16 +585,7 @@ class RFCommHelperService extends android.app.Service {
       setName("ConnectThread"+pairedBtOnly)
 
       // Always cancel discovery because it will slow down a connection
-/*
-      if(mBluetoothAdapter.isDiscovering) {
-        Log.e(TAG, "ConnectThread run isDiscovering -> cancelDiscovery()")
-*/
-        mBluetoothAdapter.cancelDiscovery
-/*
-      } else {
-        Log.e(TAG, "ConnectThread run NOT isDiscovering")
-      }
-*/
+      mBluetoothAdapter.cancelDiscovery
 
       try {
         // This is a blocking call and will only return on a successful connection or an exception
@@ -661,12 +646,6 @@ class RFCommHelperService extends android.app.Service {
             }
             return
           }
-      }
-
-      // Reset the ConnectThread because we're done
-      // todo tmtmtm: ???
-      RFCommHelperService.this synchronized {
-        mConnectThread = null
       }
 
       // Start the connected thread
@@ -906,18 +885,18 @@ class RFCommHelperService extends android.app.Service {
           p2pRemoteAddressToConnect = null
 
           if(!p2pConnected) {
-            if(D) Log.i(TAG, "WIFI_P2P_CONNECTION_CHANGED_ACTION we are now disconnected, we were disconnect already ###################")
+            if(D) Log.i(TAG, "WIFI_P2P_CONNECTION_CHANGED_ACTION we are now disconnected, we were disconnect already")
             return
           }
           // we think we are connected, but now we are being disconnected
-          if(D) Log.i(TAG, "WIFI_P2P_CONNECTION_CHANGED_ACTION we are now disconnected, set p2pConnected=false ###################")
+          if(D) Log.i(TAG, "WIFI_P2P_CONNECTION_CHANGED_ACTION we are now disconnected, set p2pConnected=false")
           p2pConnected = false
           return
 
         } else {
           // we got connected with another device, request connection info to find group owner IP
           p2pConnected = true
-          if(D) Log.i(TAG, "WIFI_P2P_CONNECTION_CHANGED_ACTION we are now p2pWifi connected with the other device ###################")
+          if(D) Log.i(TAG, "WIFI_P2P_CONNECTION_CHANGED_ACTION we are now p2pWifi connected with the other device")
           wifiP2pManager.requestConnectionInfo(p2pChannel, new WifiP2pManager.ConnectionInfoListener() {
             override def onConnectionInfoAvailable(wifiP2pInfo:WifiP2pInfo) {
               if(D) Log.i(TAG, "WIFI_P2P_CONNECTION_CHANGED_ACTION onConnectionInfoAvailable groupOwnerAddress="+wifiP2pInfo.groupOwnerAddress+" isGroupOwner="+wifiP2pInfo.isGroupOwner+" ###############")
@@ -941,7 +920,7 @@ class RFCommHelperService extends android.app.Service {
                       serverSocket=null
                     }
                     if(p2pConnected) {
-                      Log.d(TAG, "closeDownP2p wifiP2pManager.removeGroup() (this is how we disconnect from p2pWifi) ###############")
+                      Log.d(TAG, "closeDownP2p wifiP2pManager.removeGroup() (this is how we disconnect from p2pWifi)")
                       wifiP2pManager.removeGroup(p2pChannel, new ActionListener() {
                         override def onSuccess() {
                           if(D) Log.i(TAG, "closeDownP2p wifiP2pManager.removeGroup() success ####")
@@ -949,7 +928,7 @@ class RFCommHelperService extends android.app.Service {
                         }
 
                         override def onFailure(reason:Int) {
-                          if(D) Log.i(TAG, "closeDownP2p wifiP2pManager.removeGroup() failed reason="+reason+" ##################")
+                          if(D) Log.i(TAG, "closeDownP2p wifiP2pManager.removeGroup() failed reason="+reason)
                           // reason ERROR=0, P2P_UNSUPPORTED=1, BUSY=2
                           // note: it seems to be 'normal' for one of the two devices to receive reason=2 on disconenct
                         }
@@ -973,7 +952,6 @@ class RFCommHelperService extends android.app.Service {
                       if(socket!=null) {
                         connectedWifi(socket, actor=false, closeDownP2p)
                       }
-
                     } catch {
                       case ioException:IOException =>
                         Log.e(TAG, "serverSocket failed to connect ex="+ioException.getMessage)
@@ -994,7 +972,6 @@ class RFCommHelperService extends android.app.Service {
                       // we wait up to 5000 ms for the connection... if we don't get connected, an ioexception is thrown                  
                       // otherwise we continue here by connecting to the other peer
                       connectedWifi(socket, actor=true, closeDownP2p)
-
                     } catch {
                       case ioException:IOException =>
                         Log.e(TAG, "client socket failed to connect ex="+ioException.getMessage+" ########")
