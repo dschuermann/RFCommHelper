@@ -138,6 +138,8 @@ class RFCommHelperService extends android.app.Service {
   @volatile var mSecureAcceptThread:AcceptThread = null
   @volatile var mInsecureAcceptThread:AcceptThread = null
   var p2pRemoteAddressToConnect:String = null   // needed to carry the target ip-p2p-addr from ACTION_NDEF_DISCOVERED/discoverPeers() to WIFI_P2P_PEERS_CHANGED_ACTION/wifiP2pManager.connect()
+  var p2pRemoteNameToConnect:String = null      // used for information purposes only
+  var p2pOnlyIfLocalAddrBiggerThatRemote:Boolean = false      // used for information purposes only
 
   // private objects
   private val TAG = "RFCommHelperService"
@@ -146,7 +148,6 @@ class RFCommHelperService extends android.app.Service {
   private val MY_UUID_SECURE   = UUID.fromString("fa87c0d0-afac-11de-9991-0800200c9a66")
   private val NAME_INSECURE = "AnyMimeInsecure"
   private val MY_UUID_INSECURE = UUID.fromString("8ce255c0-200a-11e0-9992-0800200c9a66")
-  private var p2pRemoteNameToConnect:String = null      // used for information purposes only
   private val mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter
   private var myBtName = if(mBluetoothAdapter!=null) mBluetoothAdapter.getName else null
   private var myBtAddr = if(mBluetoothAdapter!=null) mBluetoothAdapter.getAddress else null
@@ -253,9 +254,10 @@ class RFCommHelperService extends android.app.Service {
     mConnectThread.start
   }
 
-  def connectWifi(wifiP2pManager:WifiP2pManager, p2pWifiAddr:String, p2pWifiName:String, reportConnectState:Boolean=true) :Unit = synchronized {
+  def connectWifi(wifiP2pManager:WifiP2pManager, p2pWifiAddr:String, p2pWifiName:String, onlyIfLocalAddrBiggerThatRemote:Boolean, reportConnectState:Boolean=true) :Unit = synchronized {
     p2pRemoteAddressToConnect = p2pWifiAddr
     p2pRemoteNameToConnect = p2pWifiName
+    p2pOnlyIfLocalAddrBiggerThatRemote = onlyIfLocalAddrBiggerThatRemote
     connectedRadio = 2 // wifi
     state = RFCommHelperService.STATE_CONNECTING    // tmtmtm?
 
@@ -813,7 +815,7 @@ class RFCommHelperService extends android.app.Service {
                       p2pWifiDiscoveredCallbackFkt(wifiP2pDevice)
 
                     if(p2pRemoteAddressToConnect!=null && wifiP2pDevice.deviceAddress==p2pRemoteAddressToConnect) {
-                      if(localP2pWifiAddr < p2pRemoteAddressToConnect) {
+                      if(p2pOnlyIfLocalAddrBiggerThatRemote && localP2pWifiAddr<p2pRemoteAddressToConnect) {
                         if(D) Log.i(TAG, "onPeersAvailable - local="+localP2pWifiAddr+" < remote="+p2pRemoteAddressToConnect+" - stay passive - let other device connect() ########################")
                         p2pRemoteAddressToConnect = null
 

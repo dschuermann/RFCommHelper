@@ -604,7 +604,7 @@ class RFCommHelper(activity:Activity, msgFromServiceHandler:android.os.Handler,
           if(audioConfirmSound!=null)
             audioConfirmSound.start
 
-          rfCommService.connectWifi(wifiP2pManager, p2pWifiAddr, "nfc-target")
+          rfCommService.connectWifi(wifiP2pManager, p2pWifiAddr, "nfc-target", true)
 
         } else if(mBluetoothAdapter!=null && rfCommService.desiredBluetooth && idxBt>=0) {
           var btAddr = ncfActionString.substring(idxBt+3)
