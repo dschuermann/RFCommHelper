@@ -735,6 +735,9 @@ class RFCommHelper(activity:Activity,
     return false
   }
 
+
+  ////////////////////////////////////////////////////////////////////////////////////////////////
+
   private var pairedDevicesShadowHashMap:mutable.HashMap[String,String] = null
   private var btBroadcastReceiver:BroadcastReceiver = null
   private var arrayAdapter:ArrayAdapter[String] = null
@@ -764,8 +767,6 @@ class RFCommHelper(activity:Activity,
             pairedDevicesShadowHashMap += addr -> name
             arrayAdapter.add(name+"\n"+addr+" bt stored")
             if(D) Log.i(TAG, "prefsSharedP2pBt name=["+name+"] addr="+addr+" arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size)
-            //if(audioMiniAlert!=null)
-            //  audioMiniAlert.start
           }
         }
       }
@@ -786,8 +787,6 @@ class RFCommHelper(activity:Activity,
             pairedDevicesShadowHashMap += addr -> name
             arrayAdapter.add(name+"\n"+addr+" wifi stored")
             if(D) Log.i(TAG, "prefsSharedP2pWifi name=["+name+"] addr="+addr+" arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size)
-            //if(audioMiniAlert!=null)
-            //  audioMiniAlert.start
           }
         }
       }
@@ -798,9 +797,10 @@ class RFCommHelper(activity:Activity,
       val pairedDevicesArrayListOfStrings = getBtPairedDevices  // java.util.ArrayList[String], "name/naddr"
       if(pairedDevicesArrayListOfStrings!=null) {
         if(D) Log.i(TAG, "add BtPairedDevices count="+pairedDevicesArrayListOfStrings.size+" arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size)
-        if(pairedDevicesArrayListOfStrings.size>0)
+        if(pairedDevicesArrayListOfStrings.size>0) {
           for(i <- 0 until pairedDevicesArrayListOfStrings.size)
             addDevice(pairedDevicesArrayListOfStrings.get(i))
+        }
       }
 
       // 4. start handler for all newly discovered bt devices
@@ -815,6 +815,7 @@ class RFCommHelper(activity:Activity,
                   if(pairedDevicesShadowHashMap.getOrElse(bluetoothDevice.getAddress,null)==null) {
                     pairedDevicesShadowHashMap += bluetoothDevice.getAddress -> bluetoothDevice.getName
                     arrayAdapter.add(bluetoothDevice.getName+"\n"+bluetoothDevice.getAddress+" bt discovered")
+                    // arrayAdapter.notifyDataSetChanged
                     if(D) Log.i(TAG, "btBroadcastReceiver BluetoothDevice.ACTION_FOUND name=["+bluetoothDevice.getName+"] addr="+bluetoothDevice.getAddress+
                                      " arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size)
                     if(audioMiniAlert!=null)
@@ -850,6 +851,7 @@ class RFCommHelper(activity:Activity,
                               " status="+wifiP2pDevice.status+" "+(wifiP2pDevice.deviceAddress==rfCommService.p2pRemoteAddressToConnect))
               pairedDevicesShadowHashMap += wifiP2pDevice.deviceAddress -> wifiP2pDevice.deviceName
               arrayAdapter.add(wifiP2pDevice.deviceName+"\n"+wifiP2pDevice.deviceAddress+" wifi discovered")
+              // arrayAdapter.notifyDataSetChanged
               if(D) Log.i(TAG, "add p2pWifi, arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size+" ############")
               if(audioMiniAlert!=null)
                 audioMiniAlert.start
