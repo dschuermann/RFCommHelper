@@ -115,7 +115,6 @@ class RFCommHelperService extends android.app.Service {
   var activity:Activity = null            // set by activity on new ServiceConnection()
   var activityMsgHandler:Handler = null   // set by activity on new ServiceConnection()
   var appService:RFServiceTrait = null
-  @volatile var acceptAndConnect = true   // set by activity on onPause/onResume: false = activity is sleeping, don't accept incoming connect requests
   @volatile var state = RFCommHelperService.STATE_NONE  // retrieved by activity
   @volatile var p2pWifiDiscoveredCallbackFkt:(WifiP2pDevice) => Unit = null
   var connectedRadio:Int = 0
@@ -129,7 +128,10 @@ class RFCommHelperService extends android.app.Service {
   var nfcPendingIntent:PendingIntent = null
   var nfcFilters:Array[IntentFilter] = null
   var nfcTechLists:Array[Array[String]] = null
+
+  //@volatile var acceptAndConnect = true   // set by activity on onPause/onResume: false = activity is sleeping, don't accept incoming connect requests
   var activityResumed = false
+
   var activityRuntimeClass:java.lang.Class[Activity] = null
   var nfcForegroundPushMessage:NdefMessage = null
   var desiredBluetooth = false
@@ -214,23 +216,34 @@ class RFCommHelperService extends android.app.Service {
 
   // called by onDestroy() + by activity (on MESSAGE_YOURTURN)
   def stopActiveConnection() = synchronized {
-    if(D) Log.i(TAG, "stopActiveConnection mConnectThread="+mConnectThread+" mSecureAcceptThread="+mSecureAcceptThread+" ##########")
+    if(D) Log.i(TAG, "stopActiveConnection mConnectThread="+mConnectThread)
     if(mConnectThread != null) {
+      // disconnect in case we were the connect initiator
       mConnectThread.cancel
       mConnectThread = null
     }
-    System.gc
+    if(D) Log.i(TAG, "stopActiveConnection appService.connectedThread="+appService.connectedThread+" ##############")
+    if(appService!=null && appService.connectedThread!=null) {
+      // disconnect in case we were the connect responder
+      appService.connectedThread.cancel
+      appService.connectedThread = null
+    }
     setState(RFCommHelperService.STATE_LISTEN)   // will send MESSAGE_STATE_CHANGE to activity
   }
 
-  // todo: explain what is the difference to the method above
-  def stopAcceptThread() = synchronized {
-    if(D) Log.i(TAG, "stopAcceptThread mSecureAcceptThread="+mSecureAcceptThread)
+
+/*
+  // todo: who is supposed to call this?
     if(mSecureAcceptThread != null) {
       mSecureAcceptThread.cancel
       mSecureAcceptThread = null
     }
-  }
+    if(!pairedBtOnly && mInsecureAcceptThread == null) {
+      mSecureAcceptThread.cancel
+      mSecureAcceptThread = null
+    }
+*/
+
 
   // called by the activity: options menu "connect" -> onActivityResult() -> connectDevice()
   // called by the activity: as a result of NfcAdapter.ACTION_NDEF_DISCOVERED
@@ -507,7 +520,7 @@ class RFCommHelperService extends android.app.Service {
               Log.e(TAG, "AcceptThread run pairedBtOnly="+pairedBtOnly+" state="+state+" ioex="+ioex)
         }
 
-        if(D) Log.i(TAG, "AcceptThread btSocket="+btSocket+" acceptAndConnect="+acceptAndConnect)
+        if(D) Log.i(TAG, "AcceptThread btSocket="+btSocket+" activityResumed="+activityResumed)
         if(btSocket!=null) {
           // store the deviceAddr and deviceName of the calling bt device
           if(prefsSharedP2pBtEditor!=null) {
@@ -519,15 +532,15 @@ class RFCommHelperService extends android.app.Service {
           }
 
           // a bt connection is now technically possible and can be accepted
-          // note: this is where we can decide to acceptAndConnect (or not)
-          if(!acceptAndConnect) {
+          // note: this is where we can decide to activityResumed (or not)
+          if(!activityResumed) {
             // our activity is currently paused
-            if(D) Log.i(TAG, "AcceptThread - denying incoming connect request, acceptAndConnect="+acceptAndConnect+" activity="+activity)
+            if(D) Log.i(TAG, "AcceptThread - denying incoming connect request, activityResumed="+activityResumed+" activity="+activity)
             // hangup
             btSocket.close
 
             if(activity!=null) {
-              activity.runOnUiThread(new Runnable() {
+              activity.runOnUiThread(new Runnable() {       // todo: check this
                 override def run() { 
                   // we want to show our appname, this toast will appear if Anymime is running in background
                   Toast.makeText(activity, "Run Anymime in foreground to accept BT connections.", Toast.LENGTH_LONG).show
@@ -536,16 +549,16 @@ class RFCommHelperService extends android.app.Service {
             } else {
               // ...
             }
-
+/*
             try { Thread.sleep(100); } catch { case ex:Exception => }
-            if(D) Log.i(TAG, "AcceptThread - after denying +100 ms acceptAndConnect="+acceptAndConnect)
+            if(D) Log.i(TAG, "AcceptThread - after denying +100 ms activityResumed="+activityResumed)
             try { Thread.sleep(100); } catch { case ex:Exception => }
-            if(D) Log.i(TAG, "AcceptThread - after denying +200 ms acceptAndConnect="+acceptAndConnect)
+            if(D) Log.i(TAG, "AcceptThread - after denying +200 ms activityResumed="+activityResumed)
             try { Thread.sleep(300); } catch { case ex:Exception => }
-            if(D) Log.i(TAG, "AcceptThread - after denying +500 ms acceptAndConnect="+acceptAndConnect)
+            if(D) Log.i(TAG, "AcceptThread - after denying +500 ms activityResumed="+activityResumed)
             try { Thread.sleep(300); } catch { case ex:Exception => }
-            if(D) Log.i(TAG, "AcceptThread - after denying +800 ms acceptAndConnect="+acceptAndConnect)
-
+            if(D) Log.i(TAG, "AcceptThread - after denying +800 ms activityResumed="+activityResumed)
+*/
           } else {
             // activity is not paused
             RFCommHelperService.this synchronized {
@@ -557,10 +570,12 @@ class RFCommHelperService extends android.app.Service {
         // prevent tight loop
         try { Thread.sleep(100); } catch { case ex:Exception => }
       }
+
+      // mmServerSocket was set to null
       if(D) Log.i(TAG, "AcceptThread end pairedBtOnly="+pairedBtOnly)
     }
 
-    def cancel() { // called by stopActiveConnection()
+    def cancel() { 
       if(D) Log.i(TAG, "AcceptThread cancel() pairedBtOnly="+pairedBtOnly+" mmServerSocket="+mmServerSocket)
       if(mmServerSocket!=null) {
         try {
@@ -575,8 +590,6 @@ class RFCommHelperService extends android.app.Service {
     }
   }
 
-  // private stuff
-
   private def setState(setState:Int) = synchronized {
     if(setState != state) {
       if(D) Log.i(TAG, "setState() "+state+" -> "+setState)
@@ -585,7 +598,7 @@ class RFCommHelperService extends android.app.Service {
       if(activityMsgHandler!=null) {
         activityMsgHandler.obtainMessage(RFCommHelperService.MESSAGE_STATE_CHANGE, state, -1).sendToTarget
       } else {
-        Log.e(TAG, "setState() activityMsgHandler not set")
+        Log.e(TAG, "setState() failed to set "+setState+" because activityMsgHandler not set")
       }
     }
   }
@@ -600,7 +613,7 @@ class RFCommHelperService extends android.app.Service {
       else
         mmSocket = remoteDevice.createInsecureRfcommSocketToServiceRecord(MY_UUID_INSECURE)   // does not require pairing
     } catch {
-      case e: IOException =>
+      case e:IOException =>
         Log.e(TAG, "ConnectThread Socket pairedBtOnly="+pairedBtOnly+" create() failed", e)
     }
 
@@ -642,6 +655,7 @@ class RFCommHelperService extends android.app.Service {
                   msg.setData(bundle)
                   activityMsgHandler.sendMessage(msg)
                 }
+/*
                 // Close the socket
                 try {
                   mmSocket.close
@@ -649,6 +663,8 @@ class RFCommHelperService extends android.app.Service {
                   case ex:Exception =>
                     // ignore
                 }
+*/
+                cancel
                 return
             }
           } else {
@@ -661,6 +677,7 @@ class RFCommHelperService extends android.app.Service {
               msg.setData(bundle)
               activityMsgHandler.sendMessage(msg)
             }
+/*
             // Close the socket
             try {
               mmSocket.close
@@ -668,6 +685,8 @@ class RFCommHelperService extends android.app.Service {
               case ex:Exception =>
                 // ignore
             }
+*/
+            cancel
             return
           }
       }
@@ -676,7 +695,7 @@ class RFCommHelperService extends android.app.Service {
       connectedBt(mmSocket, remoteDevice, pairedBtOnly)
     }
 
-    def cancel() {
+    def cancel() {  // called by stopActiveConnection()
       if(D) Log.i(TAG, "ConnectThread cancel() pairedBtOnly="+pairedBtOnly+" mmSocket="+mmSocket)
       if(mmSocket!=null) {
         try {
@@ -686,6 +705,7 @@ class RFCommHelperService extends android.app.Service {
             Log.e(TAG, "ConnectThread cancel() socket.close() failed for pairedBtOnly="+pairedBtOnly, e)
         }
       }
+      setState(RFCommHelperService.STATE_LISTEN)   // will send MESSAGE_STATE_CHANGE to activity
     }
   }
 

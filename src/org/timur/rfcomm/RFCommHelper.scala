@@ -104,7 +104,7 @@ class RFCommHelper(activity:Activity,
                    audioConfirmSound:MediaPlayer,
                    radioTypeWanted:Int) {
 
-  var rfCommService:RFCommHelperService = null    // activity calls stopActiveConnection -> mConnectThread.cancel
+  var rfCommService:RFCommHelperService = null
   var connectAttemptFromNfc = false
   var wifiP2pManager:WifiP2pManager = null
   var mBluetoothAdapter:BluetoothAdapter = null
@@ -475,28 +475,31 @@ class RFCommHelper(activity:Activity,
       }
     }
 
-    // set acceptAndConnect if possible / update mainViewUpdate if necessary
+    // set activityResumed if possible
     if(rfCommService!=null) {
-      if(rfCommService.acceptAndConnect==false) {
-        rfCommService.acceptAndConnect = true
-        // RFCommService will otherwise not answer incoming connect requests
-        if(D) Log.i(TAG, "onResume set rfCommService.acceptAndConnect="+rfCommService.acceptAndConnect)
-
-        // no! this undo's any visual activity (for instance the connect-progress animation)
-        //if(rfCommService.state!=RFCommHelperService.STATE_CONNECTED)    // ???
-        //  msgFromServiceHandler.obtainMessage(RFCommHelperService.UI_UPDATE, -1, -1).sendToTarget
-      }
+      rfCommService.activityResumed = true
+      //rfCommService.acceptAndConnect = true
     } else {
-      Log.i(TAG, "onResume rfCommService==null, acceptAndConnect not set")
+      Log.e(TAG, "onResume rfCommService==null, activityResumed not set ##################")
     }
-
-    rfCommService.activityResumed = true
   }
 
   def onPause() {
-    if(rfCommService!=null)
-      rfCommService.activityResumed = false
     if(D) Log.i(TAG, "onPause...")
+    // todo tmtmtm: if this is just a "small onPause" (triggered by nfc-system-animation)
+    //              rfcommservice will NOT be able to answer an incoming bt-connect-request   
+    if(rfCommService!=null) {
+      rfCommService.activityResumed = false
+      //rfCommService.acceptAndConnect = false
+      if(rfCommService.mNfcAdapter!=null && rfCommService.mNfcAdapter.isEnabled) {
+        rfCommService.mNfcAdapter.disableForegroundDispatch(activity)
+        rfCommService.mNfcAdapter.setNdefPushMessage(null, activity)
+        if(D) Log.i(TAG, "onPause setNdefPushMessage null done")
+      }
+    } else {
+      Log.e(TAG, "onPause rfCommService==null, activityResumed not cleared")
+    }
+/*
     AndrTools.runOnUiThread(activity) { () =>
       if(rfCommService!=null) {
         if(rfCommService.mNfcAdapter!=null && rfCommService.mNfcAdapter.isEnabled) {
@@ -509,15 +512,15 @@ class RFCommHelper(activity:Activity,
         // todo tmtmtm: if this is just a "small onPause" (triggered by nfc-system-animation)
         //              rfcommservice will NOT be able to answer an incoming bt-connect-request   
       } else {
-        Log.i(TAG, "onPause rfCommService==null, acceptAndConnect not cleared")
+        Log.e(TAG, "onPause rfCommService==null, acceptAndConnect not cleared")
       }
     }
+*/
   }
 
   def onDestroy() {
     if(rfCommService!=null) {
       rfCommService.stopActiveConnection
-      rfCommService.stopAcceptThread
       rfCommService.activity = null
     } else {
       Log.e(TAG, "onDestroy rfCommService=null cannot call stopActiveConnection")
@@ -625,8 +628,8 @@ class RFCommHelper(activity:Activity,
 
           if(rfCommService!=null) {
             if(D) Log.i(TAG, "onNewIntent NdefAction rfCommService!=null activityResumed="+rfCommService.activityResumed)
-            if(rfCommService.activityResumed)   // todo tmtmtm ???
-              rfCommService.acceptAndConnect = true
+            //if(rfCommService.activityResumed)   // todo tmtmtm ???
+            //  rfCommService.acceptAndConnect = true
 
             def remoteBluetoothDevice = mBluetoothAdapter.getRemoteDevice(btAddr)
             if(remoteBluetoothDevice!=null) {
