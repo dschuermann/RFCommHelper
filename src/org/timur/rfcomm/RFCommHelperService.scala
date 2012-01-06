@@ -494,6 +494,7 @@ class RFCommHelperService extends android.app.Service {
               if(D) Log.i(TAG, "connectedWifi post-ConnectedThread processing done")
             })
 
+            setState(RFCommHelperService.STATE_CONNECTED)
             appService.connectedThread.start // run() will immediately connect to SocketProxy
             appService.connectedThread.doFirstActor
 
@@ -508,7 +509,6 @@ class RFCommHelperService extends android.app.Service {
               msg.setData(bundle)
               activityMsgHandler.sendMessage(msg)
             }
-            setState(RFCommHelperService.STATE_CONNECTED)
           }
         }
       }
