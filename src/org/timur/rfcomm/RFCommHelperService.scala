@@ -128,9 +128,7 @@ class RFCommHelperService extends android.app.Service {
   var nfcPendingIntent:PendingIntent = null
   var nfcFilters:Array[IntentFilter] = null
   var nfcTechLists:Array[Array[String]] = null
-
-  //@volatile var acceptAndConnect = true   // set by activity on onPause/onResume: false = activity is sleeping, don't accept incoming connect requests
-  var activityResumed = false
+  var activityResumed = false              // fully set by RFCommHelper
 
   var activityRuntimeClass:java.lang.Class[Activity] = null
   var nfcForegroundPushMessage:NdefMessage = null
@@ -181,7 +179,7 @@ class RFCommHelperService extends android.app.Service {
   // but only while state == STATE_NONE
   // this is why we quickly switch state to STATE_LISTEN
   def start() = synchronized {
-    if(D) Log.i(TAG, "start: android.os.Build.VERSION.SDK_INT="+android.os.Build.VERSION.SDK_INT+" pairedBtOnly="+pairedBtOnly)
+    if(D) Log.i(TAG, "start: android.os.Build.VERSION.SDK_INT="+android.os.Build.VERSION.SDK_INT+" pairedBtOnly="+pairedBtOnly+" activityResumed="+activityResumed)
     setState(RFCommHelperService.STATE_LISTEN)   // this will send MESSAGE_STATE_CHANGE
 
     // in case bt was turned on _after_ app start
@@ -225,13 +223,14 @@ class RFCommHelperService extends android.app.Service {
       mConnectThread.cancel
       mConnectThread = null
     }
-    if(D) Log.i(TAG, "stopActiveConnection appService.connectedThread="+appService.connectedThread+" ##############")
     if(appService!=null && appService.connectedThread!=null) {
       // disconnect in case we were the connect responder
+      if(D) Log.i(TAG, "stopActiveConnection appService.connectedThread="+appService.connectedThread+" ##############")
       appService.connectedThread.cancel
       appService.connectedThread = null
     }
     setState(RFCommHelperService.STATE_LISTEN)   // will send MESSAGE_STATE_CHANGE to activity
+    if(D) Log.i(TAG, "stopActiveConnection done")
   }
 
 
@@ -377,7 +376,7 @@ class RFCommHelperService extends android.app.Service {
   // called by: AcceptThread() -> socket = mmServerSocket.accept()
   // called by: ConnectThread() / activity options menu (or NFC touch) -> connect() -> ConnectThread()
   // called by: ConnectPopupActivity
-  def connectedBt(socket:BluetoothSocket, remoteDevice:BluetoothDevice, pairedBtOnly:Boolean) :Unit = synchronized {
+  def connectedBt(socket:BluetoothSocket, remoteDevice:BluetoothDevice) :Unit = synchronized {
     // in case of nfc triggered connect: for the device with the bigger btAddr, this is the 1st indication of the connect
     if(D) Log.i(TAG, "connectedBt, socket="+socket+" remoteDevice="+remoteDevice+" pairedBtOnly="+pairedBtOnly)
     if(socket==null || remoteDevice==null) 
@@ -407,7 +406,7 @@ class RFCommHelperService extends android.app.Service {
       } else {
         // start the thread to handle the streams
         appService.createConnectedThread
-        appService.connectedThread.init(mmInStream, mmOutStream, pairedBtOnly, myBtAddr, myBtName, remoteBtAddrString, remoteBtNameString, () => { 
+        appService.connectedThread.init(mmInStream, mmOutStream, myBtAddr, myBtName, remoteBtAddrString, remoteBtNameString, () => { 
           if(D) Log.i(TAG, "connectedBt disconnecting from "+remoteBtAddrString+" ...")
 
           // tell the activity that the connection was lost
@@ -478,7 +477,7 @@ class RFCommHelperService extends android.app.Service {
 
           } else {
             appService.createConnectedThread
-            appService.connectedThread.init(mmInStream, mmOutStream, false, localWifiAddrString, localWifiNameString, remoteWifiAddrString, myRemoteWifiNameString, () => { 
+            appService.connectedThread.init(mmInStream, mmOutStream, localWifiAddrString, localWifiNameString, remoteWifiAddrString, myRemoteWifiNameString, () => { 
               if(D) Log.i(TAG, "connectedWifi post-ConnectedThread processing remoteWifiAddrString="+remoteWifiAddrString+" myRemoteWifiNameString="+myRemoteWifiNameString)
 
               // tell the activity that the connection was lost
@@ -494,6 +493,7 @@ class RFCommHelperService extends android.app.Service {
               if(D) Log.i(TAG, "connectedWifi post-ConnectedThread processing done")
             })
 
+            if(D) Log.i(TAG, "connectedWifi -> start thread")
             setState(RFCommHelperService.STATE_CONNECTED)
             appService.connectedThread.start // run() will immediately connect to SocketProxy
             appService.connectedThread.doFirstActor
@@ -581,7 +581,7 @@ class RFCommHelperService extends android.app.Service {
           // note: this is where we can decide to activityResumed (or not)
           if(!activityResumed) {
             // our activity is currently paused
-            if(D) Log.i(TAG, "AcceptThread - denying incoming connect request, activityResumed="+activityResumed+" activity="+activity)
+            if(D) Log.i(TAG, "AcceptThread denying incoming connect request, activityResumed="+activityResumed+" activity="+activity)
             // hangup
             btSocket.close
 
@@ -596,8 +596,9 @@ class RFCommHelperService extends android.app.Service {
 
           } else {
             // activity is not paused
+            if(D) Log.i(TAG, "AcceptThread -> connectedBt()")
             RFCommHelperService.this synchronized {
-              connectedBt(btSocket, btSocket.getRemoteDevice, pairedBtOnly)
+              connectedBt(btSocket, btSocket.getRemoteDevice)
             }
           }
         }
@@ -709,7 +710,8 @@ class RFCommHelperService extends android.app.Service {
       }
 
       // Start the connected thread
-      connectedBt(mmSocket, remoteDevice, pairedBtOnly)
+      if(D) Log.i(TAG, "ConnectThread -> connectedBt()")
+      connectedBt(mmSocket, remoteDevice)
     }
 
     def cancel() {  // called by stopActiveConnection()
@@ -729,7 +731,7 @@ class RFCommHelperService extends android.app.Service {
   def nfcServiceSetup() {
     // this is called by radioDialog/OK, by wifiDirectBroadcastReceiver:WIFI_P2P_THIS_DEVICE_CHANGED_ACTION and by onActivityResult:REQUEST_ENABLE_BT
 
-    if(D) Log.i(TAG, "nfcServiceSetup mNfcAdapter="+mNfcAdapter+" ...")
+    if(D) Log.i(TAG, "nfcServiceSetup mNfcAdapter="+mNfcAdapter+" activityResumed="+activityResumed+" ...")
 
     // setup NFC (only for Android 2.3.3+ and only if NFC hardware is available)
     if(android.os.Build.VERSION.SDK_INT>=10 && mNfcAdapter!=null && mNfcAdapter.isEnabled) {

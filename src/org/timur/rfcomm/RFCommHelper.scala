@@ -153,7 +153,7 @@ class RFCommHelper(activity:Activity,
 
       // we got connected to rfCommService
 
-      if(D) Log.i(TAG, "onCreate onServiceConnected got rfCommService object")
+      if(D) Log.i(TAG, "onCreate onServiceConnected got rfCommService object, activity="+activity)
       rfCommService.activity = activity
       rfCommService.activityRuntimeClass = activityRuntimeClass
       rfCommService.activityMsgHandler = msgFromServiceHandler
@@ -495,7 +495,7 @@ class RFCommHelper(activity:Activity,
     // set activityResumed if possible
     if(rfCommService!=null) {
       rfCommService.activityResumed = true
-      //rfCommService.acceptAndConnect = true
+      if(D) Log.i(TAG, "onResume set rfCommService.activityResumed=true")
     } else {
       Log.e(TAG, "onResume rfCommService==null, activityResumed not set ##################")
     }
@@ -507,7 +507,6 @@ class RFCommHelper(activity:Activity,
     //              rfcommservice will NOT be able to answer an incoming bt-connect-request   
     if(rfCommService!=null) {
       rfCommService.activityResumed = false
-      //rfCommService.acceptAndConnect = false
       if(rfCommService.mNfcAdapter!=null && rfCommService.mNfcAdapter.isEnabled) {
         rfCommService.mNfcAdapter.disableForegroundDispatch(activity)
         rfCommService.mNfcAdapter.setNdefPushMessage(null, activity)
