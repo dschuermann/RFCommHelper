@@ -138,8 +138,6 @@ class RFCommHelperService extends android.app.Service {
   var pairedBtOnly = false // may only be false for sdk>=10 (2.3.3+)
   var desiredWifiDirect = false
   var desiredNfc = false
-  @volatile var mSecureAcceptThread:AcceptThread = null
-  @volatile var mInsecureAcceptThread:AcceptThread = null
   var p2pRemoteAddressToConnect:String = null   // needed to carry the target ip-p2p-addr from ACTION_NDEF_DISCOVERED/discoverPeers() to WIFI_P2P_PEERS_CHANGED_ACTION/wifiP2pManager.connect()
   var p2pRemoteNameToConnect:String = null      // used for information purposes only
   var p2pOnlyIfLocalAddrBiggerThatRemote:Boolean = false      // used for information purposes only
@@ -149,10 +147,15 @@ class RFCommHelperService extends android.app.Service {
   // private objects
   private val TAG = "RFCommHelperService"
   private val D = true
+
   private val NAME_SECURE = "AnyMime"
   private val MY_UUID_SECURE   = UUID.fromString("fa87c0d0-afac-11de-9991-0800200c9a66")
+  var mSecureAcceptThread:AcceptThread = null
+
   private val NAME_INSECURE = "AnyMimeInsecure"
-  private val MY_UUID_INSECURE = UUID.fromString("8ce255c0-200a-11e0-9992-0800200c9a66")
+  private val MY_UUID_INSECURE = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
+  var mInsecureAcceptThread:AcceptThread = null
+
   private val mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter
   private var myBtName = if(mBluetoothAdapter!=null) mBluetoothAdapter.getName else null
   private var myBtAddr = if(mBluetoothAdapter!=null) mBluetoothAdapter.getAddress else null
