@@ -236,7 +236,7 @@ class RFCommHelperService extends android.app.Service {
 
 
 /*
-  // todo: who is supposed to call this?
+  // todo: who is supposed to call this? - should be called on app exit
     if(mSecureAcceptThread != null) {
       mSecureAcceptThread.cancel
       mSecureAcceptThread = null
@@ -592,19 +592,8 @@ class RFCommHelperService extends android.app.Service {
                   Toast.makeText(activity, "Run Anymime in foreground to accept BT connections.", Toast.LENGTH_LONG).show
                 }
               })
-            } else {
-              // ...
             }
-/*
-            try { Thread.sleep(100); } catch { case ex:Exception => }
-            if(D) Log.i(TAG, "AcceptThread - after denying +100 ms activityResumed="+activityResumed)
-            try { Thread.sleep(100); } catch { case ex:Exception => }
-            if(D) Log.i(TAG, "AcceptThread - after denying +200 ms activityResumed="+activityResumed)
-            try { Thread.sleep(300); } catch { case ex:Exception => }
-            if(D) Log.i(TAG, "AcceptThread - after denying +500 ms activityResumed="+activityResumed)
-            try { Thread.sleep(300); } catch { case ex:Exception => }
-            if(D) Log.i(TAG, "AcceptThread - after denying +800 ms activityResumed="+activityResumed)
-*/
+
           } else {
             // activity is not paused
             RFCommHelperService.this synchronized {
@@ -701,15 +690,6 @@ class RFCommHelperService extends android.app.Service {
                   msg.setData(bundle)
                   activityMsgHandler.sendMessage(msg)
                 }
-/*
-                // Close the socket
-                try {
-                  mmSocket.close
-                } catch {
-                  case ex:Exception =>
-                    // ignore
-                }
-*/
                 cancel
                 return
             }
@@ -723,15 +703,6 @@ class RFCommHelperService extends android.app.Service {
               msg.setData(bundle)
               activityMsgHandler.sendMessage(msg)
             }
-/*
-            // Close the socket
-            try {
-              mmSocket.close
-            } catch {
-              case ex:Exception =>
-                // ignore
-            }
-*/
             cancel
             return
           }
@@ -766,6 +737,10 @@ class RFCommHelperService extends android.app.Service {
         // Create a generic PendingIntent that will be delivered to this activity 
         // The NFC stack will fill in the intent with the details of the discovered tag 
         // before delivering to this activity.
+        if(activity==null || activityRuntimeClass==null) {
+          Log.e(TAG, "nfcServiceSetup cannot create nfcPendingIntent activity="+activity+" activityRuntimeClass="+activityRuntimeClass)
+          return
+        }
         nfcPendingIntent = PendingIntent.getActivity(activity, 0,
                 new Intent(activity, activityRuntimeClass).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), 0)
 

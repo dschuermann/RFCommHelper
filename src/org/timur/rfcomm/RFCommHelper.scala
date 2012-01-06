@@ -174,7 +174,8 @@ class RFCommHelper(activity:Activity,
         if((radioTypeWanted & RFCommHelper.RADIO_P2PWIFI)!=0)
           rfCommService.desiredWifiDirect = prefsPrivate.getBoolean("radioWifiDirect", true)
         if((radioTypeWanted & RFCommHelper.RADIO_NFC)!=0)
-          rfCommService.desiredNfc = prefsPrivate.getBoolean("radioNfc", true)
+          rfCommService.desiredNfc = prefsPrivate.getBoolean("radioNfc", true)         
+        rfCommService.pairedBtOnly = prefsPrivate.getBoolean("pairedBtOnly", false)
       }
 
       // everything is OK!
@@ -211,12 +212,14 @@ class RFCommHelper(activity:Activity,
     }
   }
 
-  def storeRadioSelection(selectedBt:Boolean, selectedWifi:Boolean, selectedNfc:Boolean) {
-    if(D) Log.i(TAG, "storeRadioSelection prefsPrivateEditor="+prefsPrivateEditor+" selectedBt="+selectedBt+" selectedWifi="+selectedWifi+" selectedNfc="+selectedNfc)
+  def storeRadioSelection(selectedBt:Boolean, selectedWifi:Boolean, selectedNfc:Boolean, pairedBtOnly:Boolean) {
+    if(D) Log.i(TAG, "storeRadioSelection prefsPrivateEditor="+prefsPrivateEditor+" selectedBt="+selectedBt+
+                     " selectedWifi="+selectedWifi+" selectedNfc="+selectedNfc+" pairedBtOnly="+pairedBtOnly)
     if(prefsPrivateEditor!=null) {
       prefsPrivateEditor.putBoolean("radioBluetooth",selectedBt)
       prefsPrivateEditor.putBoolean("radioWifiDirect",selectedWifi)
       prefsPrivateEditor.putBoolean("radioNfc",selectedNfc)
+      prefsPrivateEditor.putBoolean("pairedBtOnly",pairedBtOnly)
       prefsPrivateEditor.commit
       if(D) Log.i(TAG, "storeRadioSelection commited")
     }
@@ -242,6 +245,7 @@ class RFCommHelper(activity:Activity,
 
 
     if(D) Log.i(TAG, "radioDialog() rfCommService.desiredBluetooth="+rfCommService.desiredBluetooth)
+
     val radioBluetoothCheckbox = new CheckBox(activity)
     if((radioTypeWanted&RFCommHelper.RADIO_BT)!=0) {
       radioBluetoothCheckbox.setText("Bluetooth not available")
@@ -256,6 +260,18 @@ class RFCommHelper(activity:Activity,
       }
       radioSelectDialogLayout.addView(radioBluetoothCheckbox)
     }
+
+    val radioPairedBtOnlyCheckbox = new CheckBox(activity)
+    radioPairedBtOnlyCheckbox.setText("Paired Bluetooth only")
+    radioPairedBtOnlyCheckbox.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP,19.0f)
+    if(android.os.Build.VERSION.SDK_INT<10) {
+      radioPairedBtOnlyCheckbox.setEnabled(false)
+      radioPairedBtOnlyCheckbox.setChecked(true)
+    } else {
+      radioPairedBtOnlyCheckbox.setEnabled(true)
+      radioPairedBtOnlyCheckbox.setChecked(rfCommService.pairedBtOnly)
+    }
+    radioSelectDialogLayout.addView(radioPairedBtOnlyCheckbox)
     
     val radioWifiDirectCheckbox = new CheckBox(activity)
     if((radioTypeWanted&RFCommHelper.RADIO_P2PWIFI)!=0) {
@@ -293,7 +309,7 @@ class RFCommHelper(activity:Activity,
     radioSelectDialogBuilder.setNegativeButton(backKeyLabel, new DialogInterface.OnClickListener() {
       def onClick(dialogInterface:DialogInterface, m:Int) {
         // persist desired-flags
-        storeRadioSelection(radioBluetoothCheckbox.isChecked,radioWifiDirectCheckbox.isChecked,radioNfcCheckbox.isChecked)
+        storeRadioSelection(radioBluetoothCheckbox.isChecked,radioWifiDirectCheckbox.isChecked,radioNfcCheckbox.isChecked,radioPairedBtOnlyCheckbox.isChecked)
         if(backKeyIsExit)
           activity.finish
       }
@@ -311,7 +327,7 @@ class RFCommHelper(activity:Activity,
         override def onKey(dialogInterface:DialogInterface, keyCode:Int, keyEvent:KeyEvent) :Boolean = {
           if(keyCode == KeyEvent.KEYCODE_BACK && keyEvent.getAction()==KeyEvent.ACTION_UP /*&& !keyEvent.isCanceled()*/) {
             if(D) Log.i(TAG, "radioDialog onKeyDown KEYCODE_BACK backKeyIsExit="+backKeyIsExit)
-            storeRadioSelection(radioBluetoothCheckbox.isChecked,radioWifiDirectCheckbox.isChecked,radioNfcCheckbox.isChecked)
+            storeRadioSelection(radioBluetoothCheckbox.isChecked,radioWifiDirectCheckbox.isChecked,radioNfcCheckbox.isChecked,radioPairedBtOnlyCheckbox.isChecked)
             if(backKeyIsExit)
               activity.finish
             return true
@@ -333,6 +349,7 @@ class RFCommHelper(activity:Activity,
                 rfCommService.desiredBluetooth = radioBluetoothCheckbox.isChecked
                 rfCommService.desiredWifiDirect = radioWifiDirectCheckbox.isChecked
                 rfCommService.desiredNfc = radioNfcCheckbox.isChecked
+                rfCommService.pairedBtOnly = radioPairedBtOnlyCheckbox.isChecked
                 if(D) Log.i(TAG, "radioSelectDialog onClick desiredBluetooth="+rfCommService.desiredBluetooth+" desiredWifiDirect="+rfCommService.desiredWifiDirect+" desiredNfc="+rfCommService.desiredNfc)
                 if(rfCommService.desiredBluetooth==false && rfCommService.desiredWifiDirect==false) {
                   // we need at least 1 type of transport-radio
@@ -348,7 +365,7 @@ class RFCommHelper(activity:Activity,
                   dialogInterface.cancel
 
                   // persist desired-flags
-                  storeRadioSelection(rfCommService.desiredBluetooth,rfCommService.desiredWifiDirect,rfCommService.desiredNfc)
+                  storeRadioSelection(rfCommService.desiredBluetooth,rfCommService.desiredWifiDirect,rfCommService.desiredNfc, rfCommService.pairedBtOnly)
                   initBtNfc  // start bt-accept-thread and init-nfc
                   switchOnDesiredRadios  // open wireless settings and let user enable radio-hw
                   radioDialogPossibleAndNotYetShown = false  // radioDialog will not again be shown on successive onResume's
@@ -499,23 +516,6 @@ class RFCommHelper(activity:Activity,
     } else {
       Log.e(TAG, "onPause rfCommService==null, activityResumed not cleared")
     }
-/*
-    AndrTools.runOnUiThread(activity) { () =>
-      if(rfCommService!=null) {
-        if(rfCommService.mNfcAdapter!=null && rfCommService.mNfcAdapter.isEnabled) {
-          rfCommService.mNfcAdapter.disableForegroundDispatch(activity)
-          rfCommService.mNfcAdapter.setNdefPushMessage(null, activity)
-          if(D) Log.i(TAG, "onPause setNdefPushMessage null done")
-        }
-        rfCommService.acceptAndConnect = false
-        Log.i(TAG, "onPause rfCommService.acceptAndConnect cleared")
-        // todo tmtmtm: if this is just a "small onPause" (triggered by nfc-system-animation)
-        //              rfcommservice will NOT be able to answer an incoming bt-connect-request   
-      } else {
-        Log.e(TAG, "onPause rfCommService==null, acceptAndConnect not cleared")
-      }
-    }
-*/
   }
 
   def onDestroy() {
