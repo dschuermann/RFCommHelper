@@ -864,7 +864,7 @@ class RFCommHelper(activity:Activity,
                               " status="+wifiP2pDevice.status /*+" "+(wifiP2pDevice.deviceAddress==rfCommService.p2pRemoteAddressToConnect)*/)
               pairedDevicesShadowHashMap += wifiP2pDevice.deviceAddress -> wifiP2pDevice.deviceName
               arrayAdapter.add(wifiP2pDevice.deviceName+"\n"+wifiP2pDevice.deviceAddress+" wifi discovered")
-              // arrayAdapter.notifyDataSetChanged
+              arrayAdapter.notifyDataSetChanged
               if(D) Log.i(TAG, "add p2pWifi, arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size+" ############")
               if(audioMiniAlert!=null)
                 audioMiniAlert.start
