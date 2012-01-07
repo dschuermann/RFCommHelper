@@ -115,6 +115,7 @@ class RFCommHelperService extends android.app.Service {
   var activity:Activity = null            // set by activity on new ServiceConnection()
   var activityMsgHandler:Handler = null   // set by activity on new ServiceConnection()
   var appService:RFServiceTrait = null
+  @volatile var activityResumed = false   // set by RFCommHelper
   @volatile var state = RFCommHelperService.STATE_NONE  // retrieved by activity
   @volatile var p2pWifiDiscoveredCallbackFkt:(WifiP2pDevice) => Unit = null
   var connectedRadio:Int = 0
@@ -128,7 +129,6 @@ class RFCommHelperService extends android.app.Service {
   var nfcPendingIntent:PendingIntent = null
   var nfcFilters:Array[IntentFilter] = null
   var nfcTechLists:Array[Array[String]] = null
-  var activityResumed = false              // fully set by RFCommHelper
 
   var activityRuntimeClass:java.lang.Class[Activity] = null
   var nfcForegroundPushMessage:NdefMessage = null
@@ -146,12 +146,16 @@ class RFCommHelperService extends android.app.Service {
   private val TAG = "RFCommHelperService"
   private val D = true
 
-  private val NAME_SECURE = "AnyMime"
-  private val MY_UUID_SECURE   = UUID.fromString("fa87c0d0-afac-11de-9991-0800200c9a66")
+  //private val NAME_SECURE = "AnyMime"
+  //private val MY_UUID_SECURE   = UUID.fromString("fa87c0d0-afac-11de-9991-0800200c9a66")
+  var acceptThreadSecureName:String = null
+  var acceptThreadSecureUuid:String = null
   var mSecureAcceptThread:AcceptThread = null
 
-  private val NAME_INSECURE = "AnyMimeInsecure"
-  private val MY_UUID_INSECURE = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
+  //private val NAME_INSECURE = "AnyMimeInsecure"
+  //private val MY_UUID_INSECURE = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
+  var acceptThreadInsecureName:String = null
+  var acceptThreadInsecureUuid:String = null
   var mInsecureAcceptThread:AcceptThread = null
 
   private val mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter
@@ -179,7 +183,7 @@ class RFCommHelperService extends android.app.Service {
   // but only while state == STATE_NONE
   // this is why we quickly switch state to STATE_LISTEN
   def start() = synchronized {
-    if(D) Log.i(TAG, "start: android.os.Build.VERSION.SDK_INT="+android.os.Build.VERSION.SDK_INT+" pairedBtOnly="+pairedBtOnly+" activityResumed="+activityResumed)
+    if(D) Log.i(TAG, "start! android.os.Build.VERSION.SDK_INT="+android.os.Build.VERSION.SDK_INT+" pairedBtOnly="+pairedBtOnly+" activityResumed="+activityResumed)
     setState(RFCommHelperService.STATE_LISTEN)   // this will send MESSAGE_STATE_CHANGE
 
     // in case bt was turned on _after_ app start
@@ -233,9 +237,7 @@ class RFCommHelperService extends android.app.Service {
     if(D) Log.i(TAG, "stopActiveConnection done")
   }
 
-
-/*
-  // todo: who is supposed to call this? - should be called on app exit
+  def stopAcceptThreads() = synchronized {
     if(mSecureAcceptThread != null) {
       mSecureAcceptThread.cancel
       mSecureAcceptThread = null
@@ -244,7 +246,7 @@ class RFCommHelperService extends android.app.Service {
       mSecureAcceptThread.cancel
       mSecureAcceptThread = null
     }
-*/
+  }
 
 
   // called by the activity: options menu "connect" -> onActivityResult() -> connectDevice()
@@ -518,55 +520,55 @@ class RFCommHelperService extends android.app.Service {
   }
 
   class AcceptThread(pairedBt:Boolean=true) extends Thread {
-    if(D) Log.i(TAG, "AcceptThread")
+    if(D) Log.i(TAG, "AcceptThread pairedBt="+pairedBt)
     private var mSocketType: String = if(pairedBt) "Secure" else "Insecure"
     private var mmServerSocket:BluetoothServerSocket = null
     mmServerSocket = null
     try {
       if(pairedBt) {
-        mmServerSocket = mBluetoothAdapter.listenUsingRfcommWithServiceRecord(NAME_SECURE, MY_UUID_SECURE)
+        mmServerSocket = mBluetoothAdapter.listenUsingRfcommWithServiceRecord(acceptThreadSecureName, UUID.fromString(acceptThreadSecureUuid))
       } else {
         try {
-          mmServerSocket = mBluetoothAdapter.listenUsingInsecureRfcommWithServiceRecord(NAME_INSECURE, MY_UUID_INSECURE)
+          mmServerSocket = mBluetoothAdapter.listenUsingInsecureRfcommWithServiceRecord(acceptThreadInsecureName, UUID.fromString(acceptThreadInsecureUuid))
         } catch {
           case nsmerr: java.lang.NoSuchMethodError =>
             // this should really not happen, because we run the insecure method only if os >= 2.3.3
-            Log.e(TAG, "listenUsingInsecureRfcommWithServiceRecord failed ", nsmerr)
+            Log.e(TAG, "AcceptThread pairedBt="+pairedBt+" listenUsingInsecureRfcommWithServiceRecord failed", nsmerr)
         }
       }
     } catch {
       case e: IOException =>
-        Log.e(TAG, "AcceptThread pairedBtOnly="+pairedBtOnly+" listen() failed", e)
+        Log.e(TAG, "AcceptThread pairedBt="+pairedBt+" listen() failed", e)
     }
 
     override def run() {
       if(mmServerSocket==null)
         return
 
-      if(D) Log.i(TAG, "AcceptThread run pairedBtOnly="+pairedBtOnly+" mmServerSocket="+mmServerSocket+" ################")
+      if(D) Log.i(TAG, "AcceptThread pairedBt="+pairedBt+" run mmServerSocket="+mmServerSocket+" ################")
       setName("AcceptThread"+pairedBtOnly)
       var btSocket:BluetoothSocket = null
 
       // Listen to the server socket if we're not connected
       while(mmServerSocket!=null) {
-        if(D) Log.i(TAG, "AcceptThread run loop pairedBtOnly="+pairedBtOnly+" mmServerSocket="+mmServerSocket+" ################")
+        if(D) Log.i(TAG, "AcceptThread pairedBt="+pairedBt+" run loop mmServerSocket="+mmServerSocket+" ################")
         try {
           synchronized {
             btSocket = null
             if(mmServerSocket!=null) {
               // This is a blocking call and will only return on a successful connection or an exception
               btSocket = mmServerSocket.accept
-              if(D) Log.i(TAG, "AcceptThread run loop after accept, btSocket="+btSocket+" ################")
+              if(D) Log.i(TAG, "AcceptThread pairedBt="+pairedBt+" run loop after accept, btSocket="+btSocket+" ################")
             }
           }
         } catch {
           case ioex: IOException =>
             // log exception only if not stopped
             if(state != RFCommHelperService.STATE_NONE)
-              Log.e(TAG, "AcceptThread run pairedBtOnly="+pairedBtOnly+" state="+state+" ioex="+ioex)
+              Log.e(TAG, "AcceptThread pairedBt="+pairedBt+" run state="+state+" ioex="+ioex)
         }
 
-        if(D) Log.i(TAG, "AcceptThread btSocket="+btSocket+" activityResumed="+activityResumed)
+        if(D) Log.i(TAG, "AcceptThread pairedBt="+pairedBt+" btSocket="+btSocket+" activityResumed="+activityResumed)
         if(btSocket!=null) {
           // store the deviceAddr and deviceName of the calling bt device
           if(prefsSharedP2pBtEditor!=null) {
@@ -581,22 +583,19 @@ class RFCommHelperService extends android.app.Service {
           // note: this is where we can decide to activityResumed (or not)
           if(!activityResumed) {
             // our activity is currently paused
-            if(D) Log.i(TAG, "AcceptThread denying incoming connect request, activityResumed="+activityResumed+" activity="+activity)
+            if(D) Log.i(TAG, "AcceptThread pairedBt="+pairedBt+" Denying incoming connect request, activityResumed="+activityResumed+" activity="+activity+" ###########################")
             // hangup
             btSocket.close
 
             if(activity!=null) {
-              activity.runOnUiThread(new Runnable() {       // todo: check this
-                override def run() { 
-                  // we want to show our appname, this toast will appear if Anymime is running in background
-                  Toast.makeText(activity, "Run Anymime in foreground to accept BT connections.", Toast.LENGTH_LONG).show
-                }
-              })
+              AndrTools.runOnUiThread(activity) { () =>
+                Toast.makeText(activity, "Run Anymime in foreground to accept BT connections.", Toast.LENGTH_LONG).show
+              }
             }
 
           } else {
             // activity is not paused
-            if(D) Log.i(TAG, "AcceptThread -> connectedBt()")
+            if(D) Log.i(TAG, "AcceptThread pairedBt="+pairedBt+" -> connectedBt()")
             RFCommHelperService.this synchronized {
               connectedBt(btSocket, btSocket.getRemoteDevice)
             }
@@ -608,11 +607,11 @@ class RFCommHelperService extends android.app.Service {
       }
 
       // mmServerSocket was set to null
-      if(D) Log.i(TAG, "AcceptThread end pairedBtOnly="+pairedBtOnly)
+      if(D) Log.i(TAG, "AcceptThread pairedBt="+pairedBt+" end pairedBtOnly="+pairedBtOnly)
     }
 
     def cancel() { 
-      if(D) Log.i(TAG, "AcceptThread cancel() pairedBtOnly="+pairedBtOnly+" mmServerSocket="+mmServerSocket)
+      if(D) Log.i(TAG, "AcceptThread pairedBt="+pairedBt+" cancel() mmServerSocket="+mmServerSocket)
       if(mmServerSocket!=null) {
         try {
           setState(RFCommHelperService.STATE_NONE)   // so that run() will NOT log an error; will send MESSAGE_STATE_CHANGE
@@ -620,7 +619,7 @@ class RFCommHelperService extends android.app.Service {
           mmServerSocket=null
         } catch {
           case ex: IOException =>
-            Log.e(TAG, "cancel() mmServerSocket="+mmServerSocket+" ex=",ex)
+            Log.e(TAG, "AcceptThread pairedBt="+pairedBt+" cancel() mmServerSocket="+mmServerSocket+" ex=",ex)
         }
       }
     }
@@ -645,9 +644,9 @@ class RFCommHelperService extends android.app.Service {
     // Get a BluetoothSocket for a connection with the given BluetoothDevice
     try {
       if(pairedBtOnly)
-        mmSocket = remoteDevice.createRfcommSocketToServiceRecord(MY_UUID_SECURE)   // requires pairing
+        mmSocket = remoteDevice.createRfcommSocketToServiceRecord(UUID.fromString(acceptThreadSecureUuid))   // requires pairing
       else
-        mmSocket = remoteDevice.createInsecureRfcommSocketToServiceRecord(MY_UUID_INSECURE)   // does not require pairing
+        mmSocket = remoteDevice.createInsecureRfcommSocketToServiceRecord(UUID.fromString(acceptThreadInsecureUuid))   // does not require pairing
     } catch {
       case e:IOException =>
         Log.e(TAG, "ConnectThread Socket pairedBtOnly="+pairedBtOnly+" create() failed", e)
@@ -677,7 +676,7 @@ class RFCommHelperService extends android.app.Service {
             }
 
             try {
-              mmSocket = remoteDevice.createRfcommSocketToServiceRecord(MY_UUID_SECURE)   // requires pairing
+              mmSocket = remoteDevice.createRfcommSocketToServiceRecord(UUID.fromString(acceptThreadSecureUuid))   // requires pairing
               if(D) Log.i(TAG, "ConnectThread run 2nd attempt secure connect ...")
               mmSocket.connect
             } catch {
@@ -736,42 +735,46 @@ class RFCommHelperService extends android.app.Service {
     // setup NFC (only for Android 2.3.3+ and only if NFC hardware is available)
     if(android.os.Build.VERSION.SDK_INT>=10 && mNfcAdapter!=null && mNfcAdapter.isEnabled) {
       if(nfcPendingIntent==null) {
-        // Create a generic PendingIntent that will be delivered to this activity 
-        // The NFC stack will fill in the intent with the details of the discovered tag 
-        // before delivering to this activity.
         if(activity==null || activityRuntimeClass==null) {
           Log.e(TAG, "nfcServiceSetup cannot create nfcPendingIntent activity="+activity+" activityRuntimeClass="+activityRuntimeClass)
-          return
+
+        } else if(!activityResumed) {
+          Log.e(TAG, "nfcServiceSetup cannot call enableForegroundDispatch if activity is not resumed ############")
+
+        } else {
+          // Create a generic PendingIntent that will be delivered to this activity 
+          // The NFC stack will fill in the intent with the details of the discovered tag 
+          // before delivering to this activity.
+          nfcPendingIntent = PendingIntent.getActivity(activity, 0,
+                  new Intent(activity, activityRuntimeClass).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), 0)
+
+          // setup an intent filter for all MIME based dispatches
+          val ndef = new IntentFilter(NfcAdapter.ACTION_NDEF_DISCOVERED)
+          try {
+            if(D) Log.i(TAG, "nfcServiceSetup ndef.addDataType...")
+            ndef.addDataType("*/*")   // or "text/plain"
+            if(D) Log.i(TAG, "nfcServiceSetup ndef.addDataType done")
+          } catch {
+            case e: MalformedMimeTypeException =>
+              Log.e(TAG, "nfcServiceSetup ndef.addDataType MalformedMimeTypeException")
+              throw new RuntimeException("fail", e)
+          }
+          nfcFilters = Array(ndef)
+
+          // Setup a tech list for all NfcF tags
+          if(D) Log.i(TAG, "nfcServiceSetup setup a tech list for all NfcF tags...")
+          nfcTechLists = Array(Array(classOf[NfcF].getName))
+
+          if(D) Log.i(TAG, "nfcServiceSetup enable nfc dispatch mNfcAdapter="+mNfcAdapter+" activity="+activity+" nfcPendingIntent="+nfcPendingIntent+" nfcFilters="+nfcFilters+" nfcTechLists="+nfcTechLists+" ...")
+
+          // This method must be called from the main thread, and only when the activity is in the foreground (resumed). 
+          // Also, activities must call disableForegroundDispatch(Activity) before the completion of their onPause() callback 
+
+          AndrTools.runOnUiThread(activity) { () =>
+            mNfcAdapter.enableForegroundDispatch(activity, nfcPendingIntent, nfcFilters, nfcTechLists)
+            if(D) Log.i(TAG, "nfcServiceSetup enableForegroundDispatch done")
+          }
         }
-        nfcPendingIntent = PendingIntent.getActivity(activity, 0,
-                new Intent(activity, activityRuntimeClass).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), 0)
-
-        // setup an intent filter for all MIME based dispatches
-        val ndef = new IntentFilter(NfcAdapter.ACTION_NDEF_DISCOVERED)
-        try {
-          if(D) Log.i(TAG, "nfcServiceSetup ndef.addDataType...")
-          ndef.addDataType("*/*")   // or "text/plain"
-          if(D) Log.i(TAG, "nfcServiceSetup ndef.addDataType done")
-        } catch {
-          case e: MalformedMimeTypeException =>
-            Log.e(TAG, "nfcServiceSetup ndef.addDataType MalformedMimeTypeException")
-            throw new RuntimeException("fail", e)
-        }
-        nfcFilters = Array(ndef)
-
-        // Setup a tech list for all NfcF tags
-        if(D) Log.i(TAG, "nfcServiceSetup setup a tech list for all NfcF tags...")
-        nfcTechLists = Array(Array(classOf[NfcF].getName))
-      }
-      if(D) Log.i(TAG, "nfcServiceSetup enable nfc dispatch mNfcAdapter="+mNfcAdapter+" activity="+activity+" nfcPendingIntent="+nfcPendingIntent+" nfcFilters="+nfcFilters+" nfcTechLists="+nfcTechLists+" ...")
-
-      if(activityResumed) {
-        // This method must be called from the main thread, and only when the activity is in the foreground (resumed). 
-        // Also, activities must call disableForegroundDispatch(Activity) before the completion of their onPause() callback 
-        mNfcAdapter.enableForegroundDispatch(activity, nfcPendingIntent, nfcFilters, nfcTechLists)
-        if(D) Log.i(TAG, "nfcServiceSetup enableForegroundDispatch done")
-      } else {
-        if(D) Log.i(TAG, "nfcServiceSetup enableForegroundDispatch delayed until activity is resumed")
       }
 
       // embed our btAddress + localP2pWifiAddr in a new NdefMessage to be used via enableForegroundNdefPush

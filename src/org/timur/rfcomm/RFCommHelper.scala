@@ -102,7 +102,9 @@ class RFCommHelper(activity:Activity,
                    appService:RFServiceTrait,
                    activityRuntimeClass:java.lang.Class[Activity],
                    audioConfirmSound:MediaPlayer,
-                   radioTypeWanted:Int) {
+                   radioTypeWanted:Int,
+                   acceptThreadSecureName:String, acceptThreadSecureUuid:String,
+                   acceptThreadInsecureName:String, acceptThreadInsecureUuid:String) {
 
   var rfCommService:RFCommHelperService = null
   var connectAttemptFromNfc = false
@@ -160,6 +162,10 @@ class RFCommHelper(activity:Activity,
       rfCommService.appService = appService
       rfCommService.prefsSharedP2pBtEditor = prefsSharedP2pBt.edit
       rfCommService.prefsSharedP2pWifiEditor = prefsSharedP2pWifi.edit
+      rfCommService.acceptThreadSecureName = acceptThreadSecureName
+      rfCommService.acceptThreadSecureUuid = acceptThreadSecureUuid
+      rfCommService.acceptThreadInsecureName = acceptThreadInsecureName
+      rfCommService.acceptThreadInsecureUuid = acceptThreadInsecureUuid
 
       if(D) Log.i(TAG, "onCreate onServiceConnected prefsPrivate="+prefsPrivate+" radioTypeWanted & RFCommHelper.RADIO_BT="+(radioTypeWanted & RFCommHelper.RADIO_BT)+" ###############")
       if(prefsPrivate!=null) {
@@ -193,11 +199,11 @@ class RFCommHelper(activity:Activity,
     allFailed()
   }
 
-  def initBtNfc() {
+  private def initBtNfc() {
     // start bluetooth accept thread
     if(mBluetoothAdapter!=null && mBluetoothAdapter.isEnabled && rfCommService!=null) {
       if(rfCommService.state == RFCommHelperService.STATE_NONE) {
-        if(D) Log.i(TAG, "initBtNfc rfCommService.start acceptOnlySecureConnectReq="+rfCommService.pairedBtOnly+" ...")
+        if(D) Log.i(TAG, "initBtNfc rfCommService.start pairedBtOnly="+rfCommService.pairedBtOnly+" ...")
         rfCommService.start() // -> bt (new AcceptThread()).start -> run()
       }
 
@@ -366,7 +372,7 @@ class RFCommHelper(activity:Activity,
 
                   // persist desired-flags
                   storeRadioSelection(rfCommService.desiredBluetooth,rfCommService.desiredWifiDirect,rfCommService.desiredNfc, rfCommService.pairedBtOnly)
-                  initBtNfc  // start bt-accept-thread and init-nfc
+                  initBtNfc()  // start bt-accept-thread and init-nfc
                   switchOnDesiredRadios  // open wireless settings and let user enable radio-hw
                   radioDialogPossibleAndNotYetShown = false  // radioDialog will not again be shown on successive onResume's
                 }
@@ -433,6 +439,16 @@ class RFCommHelper(activity:Activity,
       }
     }
 
+    // set activityResumed if possible
+    if(rfCommService!=null) {
+      rfCommService.activityResumed = true
+      if(D) Log.i(TAG, "onResume set rfCommService.activityResumed=true")
+    } else {
+      Log.e(TAG, "onResume rfCommService==null, activityResumed not set ##################")
+    }
+
+    // next we will start one or two AcceptThreads, either through radioDialog() or via initBtNfc()
+    // at this point we need the UUID's for the mBluetoothAdapter.listenUsingxxxxx calls
     if(radioDialogPossibleAndNotYetShown) {
       // if all desired radio is already on, we don't need to show the radio dialog
       if((radioTypeWanted&RFCommHelper.RADIO_P2PWIFI)!=0 && wifiP2pManager!=null && !rfCommService.isWifiP2pEnabled) {
@@ -462,7 +478,7 @@ class RFCommHelper(activity:Activity,
 
       } else {
         radioDialogPossibleAndNotYetShown = false
-        initBtNfc  // start bt-accept-thread and init-nfc
+        initBtNfc()  // start bt-accept-thread and init-nfc
       }
 
     } else {
@@ -470,8 +486,10 @@ class RFCommHelper(activity:Activity,
         override def run() {
           // delay this, so that user can still exit app if wanted
           try { Thread.sleep(600) } catch { case ex:Exception => }
-          if(!activityDestroyed)
+          if(!activityDestroyed) {
+            // todo: maybe better popup the radio dialog here?
             switchOnDesiredRadios
+          }
         }
       }.start
     }
@@ -490,14 +508,6 @@ class RFCommHelper(activity:Activity,
         rfCommService.mNfcAdapter.setNdefPushMessage(rfCommService.nfcForegroundPushMessage, activity)
         //if(D) Log.i(TAG, "onResume nfc setNdefPushMessage done")
       }
-    }
-
-    // set activityResumed if possible
-    if(rfCommService!=null) {
-      rfCommService.activityResumed = true
-      if(D) Log.i(TAG, "onResume set rfCommService.activityResumed=true")
-    } else {
-      Log.e(TAG, "onResume rfCommService==null, activityResumed not set ##################")
     }
   }
 
@@ -518,8 +528,10 @@ class RFCommHelper(activity:Activity,
   }
 
   def onDestroy() {
+    if(D) Log.i(TAG, "onDestroy shutdown everything ...")
     if(rfCommService!=null) {
       rfCommService.stopActiveConnection
+      rfCommService.stopAcceptThreads
       rfCommService.activity = null
     } else {
       Log.e(TAG, "onDestroy rfCommService=null cannot call stopActiveConnection")
