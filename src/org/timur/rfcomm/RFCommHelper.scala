@@ -608,19 +608,33 @@ class RFCommHelper(activity:Activity,
     // we are interested in nfc-intents (ACTION_NDEF_DISCOVERED)
     if(android.os.Build.VERSION.SDK_INT>=10 && rfCommService.mNfcAdapter!=null && intent.getAction==NfcAdapter.ACTION_NDEF_DISCOVERED) {
       val ncfActionString = NfcHelper.checkForNdefAction(activity, intent)
-      if(D) Log.i(TAG, "onNewIntent NfcEnabled="+rfCommService.mNfcAdapter.isEnabled+" ncfActionString="+ncfActionString+" desiredWifiDirect="+rfCommService.desiredWifiDirect+" desiredBluetooth="+rfCommService.desiredBluetooth)
+      if(D) Log.i(TAG, "onNewIntent NDEF_DISCOVERED NfcEnabled="+rfCommService.mNfcAdapter.isEnabled+" ncfActionString="+ncfActionString+" desiredWifiDirect="+rfCommService.desiredWifiDirect+" desiredBluetooth="+rfCommService.desiredBluetooth)
       if(rfCommService.mNfcAdapter.isEnabled && ncfActionString!=null) {
         // this is a nfc-intent, ncfActionString may look something like this: "bt=xxyyzzxxyyzz|p2pWifi=xx:yy:zz:xx:yy:zz"
         val idxP2p = ncfActionString.indexOf("p2pWifi=")
         val idxBt = ncfActionString.indexOf("bt=")
-        //if(D) Log.i(TAG, "onNewIntent idxP2p="+idxP2p+" idxBt="+idxBt+" mBluetoothAdapter="+mBluetoothAdapter)
+
+              // new: evaluate ip= for accepoint ip-addr
+              val idxIp = ncfActionString.indexOf("ip=")
+              if(idxIp>=0) {
+                var ipAddr = ncfActionString.substring(idxIp+3)
+                val idxPipe = ipAddr.indexOf("|")
+                if(idxPipe>=0) 
+                  ipAddr = ipAddr.substring(0,idxPipe)
+                if(D) Log.i(TAG, "onNewIntent NDEF_DISCOVERED ipAddr="+ipAddr+" #######################################")
+                // play audio notification (as earliest possible feedback for nfc activity)
+                if(audioConfirmSound!=null)
+                  audioConfirmSound.start
+                rfCommService.connectIp(ipAddr, "ip-target")
+              }
+              else
 
         if(wifiP2pManager!=null && rfCommService.desiredWifiDirect && idxP2p>=0) {
           var p2pWifiAddr = ncfActionString.substring(idxP2p+8)
           val idxPipe = p2pWifiAddr.indexOf("|")
           if(idxPipe>=0) 
             p2pWifiAddr = p2pWifiAddr.substring(0,idxPipe)
-          if(D) Log.i(TAG, "onNewIntent p2pWifiAddr="+p2pWifiAddr)
+          if(D) Log.i(TAG, "onNewIntent NDEF_DISCOVERED p2pWifiAddr="+p2pWifiAddr)
 
           // play audio notification (as earliest possible feedback for nfc activity)
           if(audioConfirmSound!=null)
@@ -633,27 +647,25 @@ class RFCommHelper(activity:Activity,
           val idxPipe = btAddr.indexOf("|")
           if(idxPipe>=0) 
             btAddr = btAddr.substring(0,idxPipe)
-          if(D) Log.i(TAG, "onNewIntent btAddr="+btAddr+" rfCommService="+rfCommService)
+          if(D) Log.i(TAG, "onNewIntent NDEF_DISCOVERED btAddr="+btAddr+" rfCommService="+rfCommService)
 
           // play audio notification (as earliest possible feedback for nfc activity)
           if(audioConfirmSound!=null)
             audioConfirmSound.start
 
           if(rfCommService!=null) {
-            if(D) Log.i(TAG, "onNewIntent NdefAction rfCommService!=null activityResumed="+rfCommService.activityResumed)
-            //if(rfCommService.activityResumed)   // todo tmtmtm ???
-            //  rfCommService.acceptAndConnect = true
+            if(D) Log.i(TAG, "onNewIntent NDEF_DISCOVERED rfCommService!=null activityResumed="+rfCommService.activityResumed)
 
             def remoteBluetoothDevice = mBluetoothAdapter.getRemoteDevice(btAddr)
             if(remoteBluetoothDevice!=null) {
               //val sendFilesCount = if(selectedFileStringsArrayList!=null) selectedFileStringsArrayList.size else 0
-              //if(D) Log.i(TAG, "onNewIntent NdefAction sendFilesCount="+sendFilesCount+" ...")
-              if(D) Log.i(TAG, "onNewIntent NdefAction remoteBluetoothDevice!=null")
+              //if(D) Log.i(TAG, "onNewIntent NDEF_DISCOVERED sendFilesCount="+sendFilesCount+" ...")
+              if(D) Log.i(TAG, "onNewIntent NDEF_DISCOVERED remoteBluetoothDevice!=null")
 
               if(mBluetoothAdapter.getAddress > remoteBluetoothDevice.getAddress) {
                 // our local btAddr is > than the remote btAddr: we become the actor and we will bt-connect
                 // our activity may still be in onPause mode due to NFC activity: sleep a bit before 
-                if(D) Log.i(TAG, "onNewIntent NdefAction connecting ...")
+                if(D) Log.i(TAG, "onNewIntent NDEF_DISCOVERED connecting ...")
 
                 connectAttemptFromNfc=true    // parent app on connect fail will ask user "fall back to OPP?" only if connect was NOT initiated by nfc
                 rfCommService.connectBt(remoteBluetoothDevice)
@@ -661,7 +673,7 @@ class RFCommHelper(activity:Activity,
 
               } else {
                 // our local btAddr is < than the remote btAddr: we just wait for a bt-connect request
-                if(D) Log.i(TAG, "onNewIntent passively waiting for incoming connect request... mSecureAcceptThread="+rfCommService.mSecureAcceptThread)
+                if(D) Log.i(TAG, "onNewIntent NDEF_DISCOVERED passively waiting for incoming connect request... mSecureAcceptThread="+rfCommService.mSecureAcceptThread)
 
                 // show "connecting progress" animation
                 // todo: what if noone connects? can this aniation be aborted, does it timeout?
@@ -672,6 +684,7 @@ class RFCommHelper(activity:Activity,
             }
           }
         }
+
       }
       return true
     }
@@ -713,7 +726,7 @@ class RFCommHelper(activity:Activity,
   def switchOnDesiredRadios() {
     if(rfCommService.desiredNfc && android.os.Build.VERSION.SDK_INT>=10 && rfCommService.mNfcAdapter!=null && !rfCommService.mNfcAdapter.isEnabled) {
       // let user enable nfc
-      if(D) Log.i(TAG, "msgFromServiceHandler switchOnDesiredRadios !rfCommService.mNfcAdapter.isEnabled: ask user to enable nfc")
+      if(D) Log.i(TAG, "switchOnDesiredRadios !rfCommService.mNfcAdapter.isEnabled: ask user to enable nfc")
       AndrTools.runOnUiThread(activity) { () =>
         Toast.makeText(activity, "Please enable 'NFC', then go back...", Toast.LENGTH_SHORT).show
       }
@@ -722,7 +735,7 @@ class RFCommHelper(activity:Activity,
 
     } else if(rfCommService.desiredWifiDirect && android.os.Build.VERSION.SDK_INT>=14 && wifiP2pManager!=null && !rfCommService.isWifiP2pEnabled) {
       // let user enable wifip2p
-      if(D) Log.i(TAG, "msgFromServiceHandler switchOnDesiredRadios isWifiP2pEnabled="+rfCommService.isWifiP2pEnabled+": ask user to enable p2p")
+      if(D) Log.i(TAG, "switchOnDesiredRadios isWifiP2pEnabled="+rfCommService.isWifiP2pEnabled+": ask user to enable p2p")
       AndrTools.runOnUiThread(activity) { () =>
         Toast.makeText(activity, "Please enable 'WiFi direct', then go back...", Toast.LENGTH_SHORT).show
       }
@@ -763,23 +776,23 @@ class RFCommHelper(activity:Activity,
     // now fill our listView with all possible (paired/stored/discovered) devices of the requested device types
     // we use pairedDevicesShadowHashMap[addr,name] as a shadow-HashMap containing all listed devices, so we can prevent double-entries in the visible arrayAdapter
     pairedDevicesShadowHashMap = new mutable.HashMap[String,String]()
-    if(D) Log.i(TAG, "fill listView with all devices, arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size+" ####################################")
+    if(D) Log.i(TAG, "addAllDevices fill listView with all devices, arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size+" ####################################")
 
     if(rfCommService.desiredBluetooth) {
       // 1. add all prev connected bt devices
-      if(D) Log.i(TAG, "read prefsSharedP2pBt...")
+      if(D) Log.i(TAG, "addAllDevices read prefsSharedP2pBt...")
       val p2pBtMap = prefsSharedP2pBt.getAll   // :map[String, ?]
       val p2pBtKeySet = p2pBtMap.keySet
       val p2pBtIterator = p2pBtKeySet.iterator
       while(p2pBtIterator.hasNext) {
         val addr = p2pBtIterator.next
         val name = prefsSharedP2pBt.getString(addr,null)
-        //if(D) Log.i(TAG, "read prefsSharedP2pBt "+addr+" = "+name)
+        //if(D) Log.i(TAG, "addAllDevices read prefsSharedP2pBt "+addr+" = "+name)
         if(name!=null && name.length>0) {
           if(pairedDevicesShadowHashMap.getOrElse(addr,null)==null) {
             pairedDevicesShadowHashMap += addr -> name
             arrayAdapter.add(name+"\n"+addr+" bt stored")
-            if(D) Log.i(TAG, "prefsSharedP2pBt name=["+name+"] addr="+addr+" arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size)
+            if(D) Log.i(TAG, "addAllDevices prefsSharedP2pBt name=["+name+"] addr="+addr+" arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size)
           }
         }
       }
@@ -787,19 +800,19 @@ class RFCommHelper(activity:Activity,
 
     if(rfCommService.desiredWifiDirect) {
       // 2. add all prev connected wifi devices
-      if(D) Log.i(TAG, "read prefsSharedP2pWifi...")
+      if(D) Log.i(TAG, "addAllDevices read prefsSharedP2pWifi...")
       val p2pWifiMap = prefsSharedP2pWifi.getAll   // :map[String, ?]
       val p2pWifiKeySet = p2pWifiMap.keySet
       val p2pWifiIterator = p2pWifiKeySet.iterator
       while(p2pWifiIterator.hasNext) {
         val addr = p2pWifiIterator.next
         val name = prefsSharedP2pWifi.getString(addr,null)
-        //if(D) Log.i(TAG, "read prefsSharedP2pWifi "+addr+" = "+name)
+        //if(D) Log.i(TAG, "addAllDevices read prefsSharedP2pWifi "+addr+" = "+name)
         if(name!=null && name.length>0) {
           if(pairedDevicesShadowHashMap.getOrElse(addr,null)==null) {
             pairedDevicesShadowHashMap += addr -> name
             arrayAdapter.add(name+"\n"+addr+" wifi stored")
-            if(D) Log.i(TAG, "prefsSharedP2pWifi name=["+name+"] addr="+addr+" arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size)
+            if(D) Log.i(TAG, "addAllDevices prefsSharedP2pWifi name=["+name+"] addr="+addr+" arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size)
           }
         }
       }
@@ -809,7 +822,7 @@ class RFCommHelper(activity:Activity,
       // 3. get list of paired bt devices from rfCommHelper
       val pairedDevicesArrayListOfStrings = getBtPairedDevices  // java.util.ArrayList[String], "name/naddr"
       if(pairedDevicesArrayListOfStrings!=null) {
-        if(D) Log.i(TAG, "add BtPairedDevices count="+pairedDevicesArrayListOfStrings.size+" arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size)
+        if(D) Log.i(TAG, "addAllDevices add BtPairedDevices count="+pairedDevicesArrayListOfStrings.size+" arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size)
         if(pairedDevicesArrayListOfStrings.size>0) {
           for(i <- 0 until pairedDevicesArrayListOfStrings.size)
             addDevice(pairedDevicesArrayListOfStrings.get(i))
@@ -829,7 +842,7 @@ class RFCommHelper(activity:Activity,
                     pairedDevicesShadowHashMap += bluetoothDevice.getAddress -> bluetoothDevice.getName
                     arrayAdapter.add(bluetoothDevice.getName+"\n"+bluetoothDevice.getAddress+" bt discovered")
                     arrayAdapter.notifyDataSetChanged
-                    if(D) Log.i(TAG, "btBroadcastReceiver BluetoothDevice.ACTION_FOUND name=["+bluetoothDevice.getName+"] addr="+bluetoothDevice.getAddress+
+                    if(D) Log.i(TAG, "addAllDevices btBroadcastReceiver BluetoothDevice.ACTION_FOUND name=["+bluetoothDevice.getName+"] addr="+bluetoothDevice.getAddress+
                                      " arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size)
                     if(audioMiniAlert!=null)
                       audioMiniAlert.start
@@ -839,7 +852,7 @@ class RFCommHelper(activity:Activity,
               }
             }
             else if(BluetoothAdapter.ACTION_DISCOVERY_FINISHED==actionString) {
-              //if(D) Log.i(TAG,"btBroadcastReceiver ACTION_DISCOVERY_FINISHED arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size+" ############")
+              //if(D) Log.i(TAG,"addAllDevices btBroadcastReceiver ACTION_DISCOVERY_FINISHED arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size+" ############")
               if(btBroadcastReceiver!=null)
                 mBluetoothAdapter.startDiscovery
             }
@@ -860,12 +873,12 @@ class RFCommHelper(activity:Activity,
         rfCommService.p2pWifiDiscoveredCallbackFkt = { wifiP2pDevice =>
           if(wifiP2pDevice != null) {
             if(pairedDevicesShadowHashMap.getOrElse(wifiP2pDevice.deviceAddress,null)==null) {
-              if(D) Log.i(TAG, "add wifiP2p device deviceName="+wifiP2pDevice.deviceName+" deviceAddress="+wifiP2pDevice.deviceAddress+
+              if(D) Log.i(TAG, "addAllDevices add wifiP2p device deviceName="+wifiP2pDevice.deviceName+" deviceAddress="+wifiP2pDevice.deviceAddress+
                               " status="+wifiP2pDevice.status /*+" "+(wifiP2pDevice.deviceAddress==rfCommService.p2pRemoteAddressToConnect)*/)
               pairedDevicesShadowHashMap += wifiP2pDevice.deviceAddress -> wifiP2pDevice.deviceName
               arrayAdapter.add(wifiP2pDevice.deviceName+"\n"+wifiP2pDevice.deviceAddress+" wifi discovered")
               arrayAdapter.notifyDataSetChanged
-              if(D) Log.i(TAG, "add p2pWifi, arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size+" ############")
+              if(D) Log.i(TAG, "addAllDevices add p2pWifi, arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size+" ############")
               if(audioMiniAlert!=null)
                 audioMiniAlert.start
             }
@@ -874,11 +887,11 @@ class RFCommHelper(activity:Activity,
 
         wifiP2pManager.discoverPeers(rfCommService.p2pChannel, new WifiP2pManager.ActionListener() {
           override def onFailure(reasonCode:Int) {
-            if(D) Log.i(TAG, "wifiP2pManager.discoverPeers failed reasonCode="+reasonCode)
+            if(D) Log.i(TAG, "addAllDevices wifiP2pManager.discoverPeers failed reasonCode="+reasonCode)
             // reason ERROR=0, P2P_UNSUPPORTED=1, BUSY=2
           }
           override def onSuccess() {
-            //if(D) Log.i(TAG, "wifiP2pManager.discoverPeers onSuccess")
+            //if(D) Log.i(TAG, "addAllDevices wifiP2pManager.discoverPeers onSuccess")
           }
         })
       }
@@ -891,10 +904,10 @@ class RFCommHelper(activity:Activity,
     val idxBlank = device.substring(idxCR+1).indexOf(" ")
     val btAddr = if(idxBlank>=0) device.substring(idxCR+1,idxCR+1+idxBlank) else device.substring(idxCR+1)
     if(pairedDevicesShadowHashMap.getOrElse(btAddr,null)==null) {
-      if(D) Log.i(TAG, "add BtPairedDevices btAddr="+btAddr+" btName="+btName)
+      if(D) Log.i(TAG, "addDevice BtPairedDevices btAddr="+btAddr+" btName="+btName)
       pairedDevicesShadowHashMap += btAddr -> btName
       arrayAdapter.add(device)
-      //if(D) Log.i(TAG, "add device, arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size+" ############")
+      //if(D) Log.i(TAG, "addDevice arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size+" ############")
     }
   }
 

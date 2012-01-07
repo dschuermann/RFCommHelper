@@ -69,6 +69,7 @@ import android.net.wifi.p2p.WifiP2pManager.ActionListener
 import android.net.wifi.p2p.WifiP2pManager.Channel
 import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pDeviceList
+import android.net.wifi.WifiManager
 import android.net.NetworkInfo
 
 import android.nfc.NfcAdapter
@@ -260,7 +261,7 @@ class RFCommHelperService extends android.app.Service {
     }
 
     connectedRadio = 1 // bt
-    state = RFCommHelperService.STATE_CONNECTING    // tmtmtm?
+    state = RFCommHelperService.STATE_CONNECTING
     if(D) Log.i(TAG, "connect() remoteAddr="+newRemoteDevice.getAddress+" name="+newRemoteDevice.getName+" pairedBtOnly="+pairedBtOnly)
 
     // store target deviceAddr and deviceName to "org.timur.p2pDevices" preferences
@@ -292,7 +293,7 @@ class RFCommHelperService extends android.app.Service {
 //    p2pRemoteNameToConnect = p2pWifiName
 //    p2pOnlyIfLocalAddrBiggerThatRemote = onlyIfLocalAddrBiggerThatRemote
     connectedRadio = 2 // wifi
-    state = RFCommHelperService.STATE_CONNECTING    // tmtmtm?
+    state = RFCommHelperService.STATE_CONNECTING
 
 /*
     if(discoveringPeersInProgress) {
@@ -360,7 +361,7 @@ class RFCommHelperService extends android.app.Service {
           // todo: however sometimes this does NOT happen
           
           // let's render the connect-progress animation (like we do in connectBt)
-          connectedRadio = 2 // wifi
+          connectedRadio = 2 // wifi    // todo: duplicate - likely not necessary
           if(activityMsgHandler!=null) {
             val msg = activityMsgHandler.obtainMessage(RFCommHelperService.CONNECTION_START)
             val bundle = new Bundle
@@ -381,8 +382,37 @@ class RFCommHelperService extends android.app.Service {
       })
       if(D) Log.i(TAG, "connectWifi wifiP2pManager.connect() done")
     }
-
   }
+
+
+  def getWifiIpAddr() :String = {
+    val wifiManager = activity.getSystemService(Context.WIFI_SERVICE).asInstanceOf[WifiManager]
+    val wifiInfo = wifiManager.getConnectionInfo
+    val ipAddrInt = wifiInfo.getIpAddress
+    val ipAddrString = "%d.%d.%d.%d".format((ipAddrInt & 0xff),
+                                            (ipAddrInt >> 8 & 0xff),
+                                            (ipAddrInt >> 16 & 0xff),
+                                            (ipAddrInt >> 24 & 0xff))
+    if(D) Log.i(TAG, "getWifiIpAddr() return ipAddrString="+ipAddrString)
+    return ipAddrString
+  }
+
+  def connectIp(targetIpAddr:String, ipName:String, reportConnectState:Boolean=true) :Unit = synchronized {
+    connectedRadio = 3 // access-point ip
+    state = RFCommHelperService.STATE_CONNECTING
+
+    val localAddr = getWifiIpAddr
+    if(D) Log.i(TAG, "connectIp() localAddr="+localAddr+" to targetIpAddr="+targetIpAddr+" ###########################")
+  //val isHost = if(targetIpAddr>localAddr) true else false
+  //val isHost = targetIpAddr>localAddr
+
+    if(localAddr < targetIpAddr)
+      ipClientConnectorThread(true, null, null)  // socketserver
+    else
+      ipClientConnectorThread(false, java.net.InetAddress.getByName(targetIpAddr), null)  // client socket
+  }
+
+
 
   // called by: AcceptThread() -> socket = mmServerSocket.accept()
   // called by: ConnectThread() / activity options menu (or NFC touch) -> connect() -> ConnectThread()
@@ -394,7 +424,7 @@ class RFCommHelperService extends android.app.Service {
       return
       
     connectedRadio = 1 // bt
-    state = RFCommHelperService.STATE_CONNECTING    // tmtmtm?
+    state = RFCommHelperService.STATE_CONNECTING
 
     val remoteBtAddrString = remoteDevice.getAddress
     var remoteBtNameString = remoteDevice.getName
@@ -796,6 +826,13 @@ class RFCommHelperService extends android.app.Service {
           nfcString += "|"
         nfcString += "p2pWifi="+localP2pWifiAddr
       }
+          // adding "ip=xx.xx.xx.xx" in case device is connected to wifi-ap
+          val myWifiIpAddr = getWifiIpAddr
+          if(myWifiIpAddr!=null) {
+            if(nfcString.length>0)
+              nfcString += "|"
+            nfcString += "ip="+myWifiIpAddr
+          }
 
       if(nfcString.length==0) {
         // this should never happen, right?
@@ -821,6 +858,87 @@ class RFCommHelperService extends android.app.Service {
       Log.e(TAG, "nfcServiceSetup NFC NOT set up mNfcAdapter="+mNfcAdapter)
     }
   }
+
+
+  // wifiP2pInfo.isGroupOwner, wifiP2pInfo.groupOwnerAddress
+  def ipClientConnectorThread(isHost:Boolean, inetAddressTarget:java.net.InetAddress, closeDownP2p2:() => Unit) = {
+    if(D) Log.i(TAG, "ipClientConnectorThread isHost="+isHost+" inetAddressTarget="+inetAddressTarget+" ######################")
+
+    // start socket communication
+    new Thread() {
+      override def run() {
+        var serverSocket:ServerSocket = null
+        var socket:Socket = null
+
+        def closeDownSocket() {
+          // this will be called (by both sides) when the thread is finished
+          if(D) Log.d(TAG, "ipClientConnectorThread closeDownSocket p2pConnected="+p2pConnected+" p2pChannel="+p2pChannel)
+
+          // todo: why sleep (so long)?
+          try { Thread.sleep(1200) } catch { case ex:Exception => }
+
+          if(socket!=null) {
+            socket.close
+            socket=null
+          }
+          if(serverSocket!=null) {
+            serverSocket.close
+            serverSocket=null
+          }
+          if(p2pConnected) {
+            if(D) Log.d(TAG, "ipClientConnectorThread closeDownSocket -> closeDownP2p2="+closeDownP2p2)
+            if(closeDownP2p2!=null)
+              closeDownP2p2
+            p2pConnected = false  // probably not required, because WIFI_P2P_CONNECTION_CHANGED_ACTION will be called again with networkInfo.isConnected=false
+          }
+        }
+
+        val port = 8954  // our personal rfcomm ip-port
+        if(isHost) {
+          // which device becomes the isGroupOwner is random, but it will be the device we run our serversocket on...
+          // by convention, we make the GroupOwner (using the serverSocket) also the filetransfer-non-actor
+          // start server socket
+          if(D) Log.d(TAG, "ipClientConnectorThread server: new ServerSocket("+port+")")
+          try {
+            serverSocket = new ServerSocket(port)
+            if(D) Log.d(TAG, "ipClientConnectorThread serverSocket opened")
+            socket = serverSocket.accept
+            if(socket!=null) {
+              connectedWifi(socket, actor=false, closeDownSocket)
+            }
+          } catch {
+            case ioException:IOException =>
+              Log.e(TAG, "ipClientConnectorThread serverSocket failed to connect ex="+ioException.getMessage)
+              closeDownSocket
+          }
+
+        } else {
+          // which device becomes the Group client is random, but this is the device we run our client socket on...
+          // by convention, we make the Group client (using the client socket) also the filetransfer-actor (will start the delivery)
+          // because we are NOT the groupOwner, the groupOwnerAddress is the address of the OTHER device
+
+          val SOCKET_TIMEOUT = 5000
+          // we wait up to 5000 ms for the connection...
+          val host = inetAddressTarget.getHostAddress
+          if(D) Log.d(TAG, "ipClientConnectorThread client: connect to host="+host+" port="+port)
+          socket = new Socket()
+          try {
+            socket.bind(null)
+            socket.connect(new InetSocketAddress(host, port), SOCKET_TIMEOUT)
+            // if we don't get connected, an ioexception is thrown, otherwise we continue here by connecting to the other peer
+            connectedWifi(socket, actor=true, closeDownSocket)
+          } catch {
+            case ioException:IOException =>
+              Log.e(TAG, "ipClientConnectorThread client socket failed to connect ex="+ioException.getMessage+" ########")
+              closeDownSocket
+          }
+        }
+
+        if(D) Log.d(TAG, "ipClientConnectorThread connected-with-another-device thread ending ###############")
+      }
+    }.start
+  }
+
 
   def newWiFiDirectBroadcastReceiver(wifiP2pManager:WifiP2pManager) :WiFiDirectBroadcastReceiver = {
     return new WiFiDirectBroadcastReceiver(wifiP2pManager)
@@ -987,6 +1105,7 @@ class RFCommHelperService extends android.app.Service {
             override def onConnectionInfoAvailable(wifiP2pInfo:WifiP2pInfo) {
               if(D) Log.i(TAG, "WiFiDirectBroadcastReceiver CONNECTION_CHANGED_ACTION onConnectionInfoAvailable groupOwnerAddress="+wifiP2pInfo.groupOwnerAddress+" isGroupOwner="+wifiP2pInfo.isGroupOwner+" ###############")
 
+/*
               // start socket communication
               new Thread() {
                 override def run() {
@@ -1072,6 +1191,28 @@ class RFCommHelperService extends android.app.Service {
 
                 if(D) Log.d(TAG, "WiFiDirectBroadcastReceiver connected-with-another-device thread ending ###############")
               }.start
+*/
+              def closeDownP2p() {
+                if(p2pConnected) {
+                  if(D) Log.d(TAG, "WiFiDirectBroadcastReceiver closeDownP2p wifiP2pManager.removeGroup() (this is how we disconnect from p2pWifi)")
+                  wifiP2pManager.removeGroup(p2pChannel, new ActionListener() {
+                    override def onSuccess() {
+                      //if(D) Log.i(TAG, "WiFiDirectBroadcastReceiver closeDownP2p wifiP2pManager.removeGroup() success")
+                      // wifiDirectBroadcastReceiver will notify us
+                    }
+
+                    override def onFailure(reason:Int) {
+                      if(D) Log.i(TAG, "WiFiDirectBroadcastReceiver closeDownP2p wifiP2pManager.removeGroup() failed reason="+reason+" ############")
+                      // reason ERROR=0, P2P_UNSUPPORTED=1, BUSY=2
+                      // note: it seems to be 'normal' for one of the two devices to receive reason=2 on disconenct
+                    }
+                  })
+
+                  p2pConnected = false  // probably not required, because WIFI_P2P_CONNECTION_CHANGED_ACTION will be called again with networkInfo.isConnected=false
+                }
+              }
+
+              ipClientConnectorThread(wifiP2pInfo.isGroupOwner, wifiP2pInfo.groupOwnerAddress, closeDownP2p)
             }
           })
         }
