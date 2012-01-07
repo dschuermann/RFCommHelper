@@ -616,7 +616,7 @@ class RFCommHelper(activity:Activity,
 
               // new: evaluate ip= for accepoint ip-addr
               val idxIp = ncfActionString.indexOf("ip=")
-              if(idxIp>=0) {
+              if(idxIp>=0 && rfCommService.getWifiIpAddr!=null) {
                 var ipAddr = ncfActionString.substring(idxIp+3)
                 val idxPipe = ipAddr.indexOf("|")
                 if(idxPipe>=0) 
@@ -673,7 +673,7 @@ class RFCommHelper(activity:Activity,
 
               } else {
                 // our local btAddr is < than the remote btAddr: we just wait for a bt-connect request
-                if(D) Log.i(TAG, "onNewIntent NDEF_DISCOVERED passively waiting for incoming connect request... mSecureAcceptThread="+rfCommService.mSecureAcceptThread)
+                if(D) Log.i(TAG, "onNewIntent NDEF_DISCOVERED passively waiting for incoming bt-connect request... mSecureAcceptThread="+rfCommService.mSecureAcceptThread)
 
                 // show "connecting progress" animation
                 // todo: what if noone connects? can this aniation be aborted, does it timeout?
