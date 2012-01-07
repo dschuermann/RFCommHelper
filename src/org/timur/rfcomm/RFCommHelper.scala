@@ -160,7 +160,9 @@ class RFCommHelper(activity:Activity,
       rfCommService.activityRuntimeClass = activityRuntimeClass
       rfCommService.activityMsgHandler = msgFromServiceHandler
       rfCommService.appService = appService
+      rfCommService.prefsSharedP2pBt = prefsSharedP2pBt
       rfCommService.prefsSharedP2pBtEditor = prefsSharedP2pBt.edit
+      rfCommService.prefsSharedP2pWifi = prefsSharedP2pWifi
       rfCommService.prefsSharedP2pWifiEditor = prefsSharedP2pWifi.edit
       rfCommService.acceptThreadSecureName = acceptThreadSecureName
       rfCommService.acceptThreadSecureUuid = acceptThreadSecureUuid
@@ -826,7 +828,7 @@ class RFCommHelper(activity:Activity,
                   if(pairedDevicesShadowHashMap.getOrElse(bluetoothDevice.getAddress,null)==null) {
                     pairedDevicesShadowHashMap += bluetoothDevice.getAddress -> bluetoothDevice.getName
                     arrayAdapter.add(bluetoothDevice.getName+"\n"+bluetoothDevice.getAddress+" bt discovered")
-                    // arrayAdapter.notifyDataSetChanged
+                    arrayAdapter.notifyDataSetChanged
                     if(D) Log.i(TAG, "btBroadcastReceiver BluetoothDevice.ACTION_FOUND name=["+bluetoothDevice.getName+"] addr="+bluetoothDevice.getAddress+
                                      " arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size)
                     if(audioMiniAlert!=null)
@@ -859,7 +861,7 @@ class RFCommHelper(activity:Activity,
           if(wifiP2pDevice != null) {
             if(pairedDevicesShadowHashMap.getOrElse(wifiP2pDevice.deviceAddress,null)==null) {
               if(D) Log.i(TAG, "add wifiP2p device deviceName="+wifiP2pDevice.deviceName+" deviceAddress="+wifiP2pDevice.deviceAddress+
-                              " status="+wifiP2pDevice.status+" "+(wifiP2pDevice.deviceAddress==rfCommService.p2pRemoteAddressToConnect))
+                              " status="+wifiP2pDevice.status /*+" "+(wifiP2pDevice.deviceAddress==rfCommService.p2pRemoteAddressToConnect)*/)
               pairedDevicesShadowHashMap += wifiP2pDevice.deviceAddress -> wifiP2pDevice.deviceName
               arrayAdapter.add(wifiP2pDevice.deviceName+"\n"+wifiP2pDevice.deviceAddress+" wifi discovered")
               // arrayAdapter.notifyDataSetChanged
