@@ -104,7 +104,8 @@ class RFCommHelper(activity:Activity,
                    audioConfirmSound:MediaPlayer,
                    radioTypeWanted:Int,
                    acceptThreadSecureName:String, acceptThreadSecureUuid:String,
-                   acceptThreadInsecureName:String, acceptThreadInsecureUuid:String) {
+                   acceptThreadInsecureName:String, acceptThreadInsecureUuid:String,
+                   ipPort:Int) {
 
   var rfCommService:RFCommHelperService = null
   var connectAttemptFromNfc = false
@@ -168,6 +169,7 @@ class RFCommHelper(activity:Activity,
       rfCommService.acceptThreadSecureUuid = acceptThreadSecureUuid
       rfCommService.acceptThreadInsecureName = acceptThreadInsecureName
       rfCommService.acceptThreadInsecureUuid = acceptThreadInsecureUuid
+      rfCommService.ipPort = ipPort
 
       if(D) Log.i(TAG, "onCreate onServiceConnected prefsPrivate="+prefsPrivate+" radioTypeWanted & RFCommHelper.RADIO_BT="+(radioTypeWanted & RFCommHelper.RADIO_BT)+" ###############")
       if(prefsPrivate!=null) {
@@ -604,32 +606,31 @@ class RFCommHelper(activity:Activity,
 
   def onNewIntent(intent:Intent) :Boolean = {
     // all sort of intents may arrive here... for instance ACTION_NDEF_DISCOVERED
-    if(D) Log.i(TAG, "onNewIntent intent="+intent+" intent.getAction="+intent.getAction+" mNfcAdapter="+rfCommService.mNfcAdapter)
+    //if(D) Log.i(TAG, "onNewIntent intent="+intent+" intent.getAction="+intent.getAction+" mNfcAdapter="+rfCommService.mNfcAdapter)
     // we are interested in nfc-intents (ACTION_NDEF_DISCOVERED)
     if(android.os.Build.VERSION.SDK_INT>=10 && rfCommService.mNfcAdapter!=null && intent.getAction==NfcAdapter.ACTION_NDEF_DISCOVERED) {
       val ncfActionString = NfcHelper.checkForNdefAction(activity, intent)
-      if(D) Log.i(TAG, "onNewIntent NDEF_DISCOVERED NfcEnabled="+rfCommService.mNfcAdapter.isEnabled+" ncfActionString="+ncfActionString+" desiredWifiDirect="+rfCommService.desiredWifiDirect+" desiredBluetooth="+rfCommService.desiredBluetooth)
+      if(D) Log.i(TAG, "onNewIntent NDEF_DISCOVERED NfcEnabled="+rfCommService.mNfcAdapter.isEnabled+" ncfActionString=["+ncfActionString+"] desiredWifiDirect="+rfCommService.desiredWifiDirect+" desiredBluetooth="+rfCommService.desiredBluetooth)
       if(rfCommService.mNfcAdapter.isEnabled && ncfActionString!=null) {
         // this is a nfc-intent, ncfActionString may look something like this: "bt=xxyyzzxxyyzz|p2pWifi=xx:yy:zz:xx:yy:zz"
         val idxP2p = ncfActionString.indexOf("p2pWifi=")
         val idxBt = ncfActionString.indexOf("bt=")
+        val idxIp = ncfActionString.indexOf("ip=")
 
-              // new: evaluate ip= for accepoint ip-addr
-              val idxIp = ncfActionString.indexOf("ip=")
-              if(idxIp>=0 && rfCommService.getWifiIpAddr!=null) {
-                var ipAddr = ncfActionString.substring(idxIp+3)
-                val idxPipe = ipAddr.indexOf("|")
-                if(idxPipe>=0) 
-                  ipAddr = ipAddr.substring(0,idxPipe)
-                if(D) Log.i(TAG, "onNewIntent NDEF_DISCOVERED ipAddr="+ipAddr+" #######################################")
-                // play audio notification (as earliest possible feedback for nfc activity)
-                if(audioConfirmSound!=null)
-                  audioConfirmSound.start
-                rfCommService.connectIp(ipAddr, "ip-target")
-              }
-              else
+        if(idxIp>=0 && rfCommService.getWifiIpAddr!=null) {
+          // new: evaluate "ip=..." for access-point ip-addr
+          var ipAddr = ncfActionString.substring(idxIp+3)
+          val idxPipe = ipAddr.indexOf("|")
+          if(idxPipe>=0) 
+            ipAddr = ipAddr.substring(0,idxPipe)
+          if(D) Log.i(TAG, "onNewIntent NDEF_DISCOVERED ipAddr="+ipAddr)
+          // play audio notification (as earliest possible feedback for nfc activity)
+          if(audioConfirmSound!=null)
+            audioConfirmSound.start
+          rfCommService.connectIp(ipAddr, "ip-target")
 
-        if(wifiP2pManager!=null && rfCommService.desiredWifiDirect && idxP2p>=0) {
+        } else if(wifiP2pManager!=null && rfCommService.desiredWifiDirect && idxP2p>=0) {
+          // evaluate "p2pWifi=..." for WiFi-Direct mac-addr
           var p2pWifiAddr = ncfActionString.substring(idxP2p+8)
           val idxPipe = p2pWifiAddr.indexOf("|")
           if(idxPipe>=0) 
@@ -643,6 +644,7 @@ class RFCommHelper(activity:Activity,
           rfCommService.connectWifi(wifiP2pManager, p2pWifiAddr, "nfc-target", true)
 
         } else if(mBluetoothAdapter!=null && rfCommService.desiredBluetooth && idxBt>=0) {
+          // evaluate "bt=..." for bluetooth mac-addr
           var btAddr = ncfActionString.substring(idxBt+3)
           val idxPipe = btAddr.indexOf("|")
           if(idxPipe>=0) 
@@ -776,7 +778,7 @@ class RFCommHelper(activity:Activity,
     // now fill our listView with all possible (paired/stored/discovered) devices of the requested device types
     // we use pairedDevicesShadowHashMap[addr,name] as a shadow-HashMap containing all listed devices, so we can prevent double-entries in the visible arrayAdapter
     pairedDevicesShadowHashMap = new mutable.HashMap[String,String]()
-    if(D) Log.i(TAG, "addAllDevices fill listView with all devices, arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size+" ####################################")
+    if(D) Log.i(TAG, "addAllDevices fill listView with all devices, arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size)
 
     if(rfCommService.desiredBluetooth) {
       // 1. add all prev connected bt devices

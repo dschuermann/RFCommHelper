@@ -130,6 +130,7 @@ class RFCommHelperService extends android.app.Service {
   var nfcPendingIntent:PendingIntent = null
   var nfcFilters:Array[IntentFilter] = null
   var nfcTechLists:Array[Array[String]] = null
+  var ipPort = 8954
 
   var activityRuntimeClass:java.lang.Class[Activity] = null
   var nfcForegroundPushMessage:NdefMessage = null
@@ -165,6 +166,7 @@ class RFCommHelperService extends android.app.Service {
   private var myBtName = if(mBluetoothAdapter!=null) mBluetoothAdapter.getName else null
   private var myBtAddr = if(mBluetoothAdapter!=null) mBluetoothAdapter.getAddress else null
   @volatile private var mConnectThread:ConnectThread = null
+  
 
   if(D) Log.i(TAG, "constructor myBtName="+myBtName+" myBtAddr="+myBtAddr+" mBluetoothAdapter="+mBluetoothAdapter)
   private var blobTaskId = 0
@@ -367,7 +369,7 @@ class RFCommHelperService extends android.app.Service {
     state = RFCommHelperService.STATE_CONNECTING
 
     val localAddr = getWifiIpAddr
-    if(D) Log.i(TAG, "connectIp() localAddr="+localAddr+" to targetIpAddr="+targetIpAddr+" ############")
+    if(D) Log.i(TAG, "connectIp() localAddr="+localAddr+" to targetIpAddr="+targetIpAddr)
 
     if(localAddr!=null) {
       if(localAddr < targetIpAddr)
@@ -827,7 +829,7 @@ class RFCommHelperService extends android.app.Service {
 
   // wifiP2pInfo.isGroupOwner, wifiP2pInfo.groupOwnerAddress
   def ipClientConnectorThread(isHost:Boolean, inetAddressTarget:java.net.InetAddress, closeDownP2p2:() => Unit) = {
-    if(D) Log.i(TAG, "ipClientConnectorThread isHost="+isHost+" inetAddressTarget="+inetAddressTarget+" ######################")
+    if(D) Log.i(TAG, "ipClientConnectorThread isHost="+isHost+" inetAddressTarget="+inetAddressTarget)
 
     // start socket communication
     new Thread() {
@@ -858,7 +860,7 @@ class RFCommHelperService extends android.app.Service {
           }
         }
 
-        val port = 8954  // our personal rfcomm ip-port
+        val port = ipPort //8954  // our personal rfcomm ip-port
         if(isHost) {
           // which device becomes the isGroupOwner is random, but it will be the device we run our serversocket on...
           // by convention, we make the GroupOwner (using the serverSocket) also the filetransfer-non-actor
@@ -898,8 +900,6 @@ class RFCommHelperService extends android.app.Service {
               closeDownSocket
           }
         }
-
-        if(D) Log.d(TAG, "ipClientConnectorThread connected-with-another-device thread ending ###############")
       }
     }.start
   }
@@ -1070,93 +1070,6 @@ class RFCommHelperService extends android.app.Service {
             override def onConnectionInfoAvailable(wifiP2pInfo:WifiP2pInfo) {
               if(D) Log.i(TAG, "WiFiDirectBroadcastReceiver CONNECTION_CHANGED_ACTION onConnectionInfoAvailable groupOwnerAddress="+wifiP2pInfo.groupOwnerAddress+" isGroupOwner="+wifiP2pInfo.isGroupOwner+" ###############")
 
-/*
-              // start socket communication
-              new Thread() {
-                override def run() {
-                  var serverSocket:ServerSocket = null
-                  var socket:Socket = null
-
-                  def closeDownP2p() {
-                    // this will be called (by both sides) when the thread is finished
-                    if(D) Log.d(TAG, "WiFiDirectBroadcastReceiver closeDownP2p p2pConnected="+p2pConnected+" p2pChannel="+p2pChannel)
-
-                    // todo: why sleep (so long)?
-                    try { Thread.sleep(1200) } catch { case ex:Exception => }
-
-                    if(socket!=null) {
-                      socket.close
-                      socket=null
-                    }
-                    if(serverSocket!=null) {
-                      serverSocket.close
-                      serverSocket=null
-                    }
-                    if(p2pConnected) {
-                      if(D) Log.d(TAG, "WiFiDirectBroadcastReceiver closeDownP2p wifiP2pManager.removeGroup() (this is how we disconnect from p2pWifi)")
-                      wifiP2pManager.removeGroup(p2pChannel, new ActionListener() {
-                        override def onSuccess() {
-                          //if(D) Log.i(TAG, "WiFiDirectBroadcastReceiver closeDownP2p wifiP2pManager.removeGroup() success")
-                          // wifiDirectBroadcastReceiver will notify us
-                        }
-
-                        override def onFailure(reason:Int) {
-                          if(D) Log.i(TAG, "WiFiDirectBroadcastReceiver closeDownP2p wifiP2pManager.removeGroup() failed reason="+reason+" ############")
-                          // reason ERROR=0, P2P_UNSUPPORTED=1, BUSY=2
-                          // note: it seems to be 'normal' for one of the two devices to receive reason=2 on disconenct
-                        }
-                      })
-
-                      p2pConnected = false  // probably not required, because WIFI_P2P_CONNECTION_CHANGED_ACTION will be called again with networkInfo.isConnected=false
-                      //p2pRemoteAddressToConnect = null
-                    }
-                  }
-
-                  val port = 8954  // our personal rfcomm ip-port
-                  if(wifiP2pInfo.isGroupOwner) {
-                    // which device becomes the isGroupOwner is random, but it will be the device we run our serversocket on...
-                    // by convention, we make the GroupOwner (using the serverSocket) also the filetransfer-non-actor
-                    // start server socket
-                    //if(D) Log.d(TAG, "WiFiDirectBroadcastReceiver Server: new ServerSocket("+port+")")
-                    try {
-                      serverSocket = new ServerSocket(port)
-                      if(D) Log.d(TAG, "WiFiDirectBroadcastReceiver serverSocket opened")
-                      socket = serverSocket.accept
-                      if(socket!=null) {
-                        connectedWifi(socket, actor=false, closeDownP2p)
-                      }
-                    } catch {
-                      case ioException:IOException =>
-                        Log.e(TAG, "WiFiDirectBroadcastReceiver serverSocket failed to connect ex="+ioException.getMessage)
-                        closeDownP2p
-                    }
-
-                  } else {
-                    // which device becomes the Group client is random, but this is the device we run our client socket on...
-                    // by convention, we make the Group client (using the client socket) also the filetransfer-actor (will start the delivery)
-                    // because we are NOT the groupOwner, the groupOwnerAddress is the address of the OTHER device
-
-                    val SOCKET_TIMEOUT = 5000
-                    // we wait up to 5000 ms for the connection...
-
-                    val host = wifiP2pInfo.groupOwnerAddress
-                    socket = new Socket()
-                    try {
-                      socket.bind(null)
-                      socket.connect(new InetSocketAddress(host, port), SOCKET_TIMEOUT)
-                      // if we don't get connected, an ioexception is thrown, otherwise we continue here by connecting to the other peer
-                      connectedWifi(socket, actor=true, closeDownP2p)
-                    } catch {
-                      case ioException:IOException =>
-                        Log.e(TAG, "WiFiDirectBroadcastReceiver client socket failed to connect ex="+ioException.getMessage+" ########")
-                        closeDownP2p
-                    }
-                  }
-                }
-
-                if(D) Log.d(TAG, "WiFiDirectBroadcastReceiver connected-with-another-device thread ending ###############")
-              }.start
-*/
               def closeDownP2p() {
                 if(p2pConnected) {
                   if(D) Log.d(TAG, "WiFiDirectBroadcastReceiver closeDownP2p wifiP2pManager.removeGroup() (this is how we disconnect from p2pWifi)")
