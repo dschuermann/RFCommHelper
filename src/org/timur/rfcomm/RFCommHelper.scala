@@ -129,21 +129,21 @@ class RFCommHelper(activity:Activity,
     intentFilter.addAction(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION)
   }
 
-  if(D) Log.i(TAG, "onCreate startService('RFCommHelperService') ...")
+  if(D) Log.i(TAG, "constructor startService('RFCommHelperService') ...")
   val serviceIntent = new Intent(activity, classOf[RFCommHelperService])
   //startService(serviceIntent)   // call this only, to keep service active after onDestroy()/unbindService()
 
   var rfCommServiceConnection = new ServiceConnection { 
     def onServiceDisconnected(className:ComponentName) { 
-      if(D) Log.i(TAG, "onCreate onServiceDisconnected set rfCommService=null")
+      if(D) Log.i(TAG, "constructor rfCommServiceConnection onServiceDisconnected set rfCommService=null")
       rfCommService = null
       allFailed()
     } 
     def onServiceConnected(className:ComponentName, rawBinder:IBinder) { 
-      if(D) Log.i(TAG, "onCreate onServiceConnected localBinder.getService ...")
+      if(D) Log.i(TAG, "constructor rfCommServiceConnection onServiceConnected localBinder.getService ...")
       rfCommService = rawBinder.asInstanceOf[RFCommHelperService#LocalBinder].getService
       if(rfCommService==null) {
-        Log.e(TAG, "onCreate onServiceConnected no interface to service, rfCommService==null")
+        Log.e(TAG, "constructor rfCommServiceConnection onServiceConnected no interface to service, rfCommService==null")
         val errMsg = "Error - failed to get service interface from binder"
         if(msgFromServiceHandler!=null)
           msgFromServiceHandler.obtainMessage(RFCommHelperService.ALERT_MESSAGE, -1, -1, errMsg).sendToTarget
@@ -156,7 +156,7 @@ class RFCommHelper(activity:Activity,
 
       // we got connected to rfCommService
 
-      if(D) Log.i(TAG, "onCreate onServiceConnected got rfCommService object, activity="+activity)
+      if(D) Log.i(TAG, "constructor rfCommServiceConnection onServiceConnected got rfCommService object, activity="+activity)
       rfCommService.activity = activity
       rfCommService.activityRuntimeClass = activityRuntimeClass
       rfCommService.activityMsgHandler = msgFromServiceHandler
@@ -171,7 +171,7 @@ class RFCommHelper(activity:Activity,
       rfCommService.acceptThreadInsecureUuid = acceptThreadInsecureUuid
       rfCommService.ipPort = ipPort
 
-      if(D) Log.i(TAG, "onCreate onServiceConnected prefsPrivate="+prefsPrivate+" radioTypeWanted & RFCommHelper.RADIO_BT="+(radioTypeWanted & RFCommHelper.RADIO_BT)+" ###############")
+      if(D) Log.i(TAG, "constructor rfCommServiceConnection onServiceConnected prefsPrivate="+prefsPrivate+" radioTypeWanted & RFCommHelper.RADIO_BT="+(radioTypeWanted & RFCommHelper.RADIO_BT))
       if(prefsPrivate!=null) {
         // note: the desiredRADIO settings are off by default
         // if the parent app requests any of these settings via radioTypeWanted, the prefsPrivate are read
@@ -179,7 +179,7 @@ class RFCommHelper(activity:Activity,
       
         if((radioTypeWanted & RFCommHelper.RADIO_BT)!=0) {
           rfCommService.desiredBluetooth = prefsPrivate.getBoolean("radioBluetooth", true)
-          if(D) Log.i(TAG, "onCreate onServiceConnected rfCommService.desiredBluetooth="+rfCommService.desiredBluetooth)
+          if(D) Log.i(TAG, "constructor rfCommServiceConnection onServiceConnected rfCommService.desiredBluetooth="+rfCommService.desiredBluetooth)
         }
         if((radioTypeWanted & RFCommHelper.RADIO_P2PWIFI)!=0)
           rfCommService.desiredWifiDirect = prefsPrivate.getBoolean("radioWifiDirect", true)
@@ -188,18 +188,27 @@ class RFCommHelper(activity:Activity,
         rfCommService.pairedBtOnly = prefsPrivate.getBoolean("pairedBtOnly", false)
       }
 
-      // everything is OK!
-      if(D) Log.i(TAG, "onCreate onServiceConnected -> allOK")
+      // rfCommService is initialized
+      if(D) Log.i(TAG, "constructor rfCommServiceConnection onServiceConnected activityResumed="+rfCommService.activityResumed+" -> onResume")
+      //if(rfCommService.activityResumed) {
+        // todo: but what if not?
+        new Thread() {
+          override def run() {
+            onResume  // this will run radioSelect and start the AcceptThread(s)
+          }
+        }.start                        
+      //}
+      if(D) Log.i(TAG, "constructor rfCommServiceConnection onServiceConnected -> allOK")
       allOK()
     } 
   } 
   if(rfCommServiceConnection!=null) {
-    if(D) Log.i(TAG, "onCreate bindService ...")
+    if(D) Log.i(TAG, "constructor bindService ...")
     activity.bindService(serviceIntent, rfCommServiceConnection, Context.BIND_AUTO_CREATE)
-    if(D) Log.i(TAG, "onCreate bindService done")
+    if(D) Log.i(TAG, "constructor bindService done")
     radioDialogPossibleAndNotYetShown = true // will be evaluated in onResume
   } else {
-    Log.e(TAG, "onCreate bindService failed")
+    Log.e(TAG, "constructor bindService failed")
     allFailed()
   }
 
@@ -615,8 +624,12 @@ class RFCommHelper(activity:Activity,
         // this is a nfc-intent, ncfActionString may look something like this: "bt=xxyyzzxxyyzz|p2pWifi=xx:yy:zz:xx:yy:zz"
         val idxP2p = ncfActionString.indexOf("p2pWifi=")
         val idxBt = ncfActionString.indexOf("bt=")
-        val idxIp = ncfActionString.indexOf("ip=")
 
+        // todo tmtmtm: at this point, "ip=" is only for testing
+        //              disadvantage: if SocketClient communicates over accesspoint-ip, it cannot use the accesspoint-ip as a fallback
+        //              we use this here, as a substitude for wifiDirect, as long it is not stable
+        //              this can be disabled by outremarking the code below [adding "ip=xx.xx.xx.xx"] in RFCommService
+        val idxIp = ncfActionString.indexOf("ip=")
         if(idxIp>=0 && rfCommService.getWifiIpAddr!=null) {
           // new: evaluate "ip=..." for access-point ip-addr
           var ipAddr = ncfActionString.substring(idxIp+3)
