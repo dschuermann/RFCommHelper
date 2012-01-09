@@ -288,8 +288,6 @@ class RFCommHelperService extends android.app.Service {
     mConnectThread.start
   }
 
-  val wifiP2pConfig = new WifiP2pConfig()
-
   def connectWifi(wifiP2pManager:WifiP2pManager, p2pWifiAddr:String, p2pWifiName:String, onlyIfLocalAddrBiggerThatRemote:Boolean, reportConnectState:Boolean=true) :Unit = synchronized {
     connectedRadio = 2 // wifi
     state = RFCommHelperService.STATE_CONNECTING
@@ -312,7 +310,7 @@ class RFCommHelperService extends android.app.Service {
 
     } else {
       if(D) Log.i(TAG, "connectWifi active connect() local="+localP2pWifiAddr+" > remote="+p2pWifiAddr+" ############")
-      //val wifiP2pConfig = new WifiP2pConfig()
+      val wifiP2pConfig = new WifiP2pConfig()
       wifiP2pConfig.groupOwnerIntent = -1
       wifiP2pConfig.wps.setup = WpsInfo.PBC
       wifiP2pConfig.deviceAddress = p2pWifiAddr
