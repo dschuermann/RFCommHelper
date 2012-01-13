@@ -21,17 +21,24 @@
 package org.timur.rfcomm
 
 import android.content.Context
+import android.content.Intent
 import android.os.Handler
+import android.os.IBinder
+
 
 trait RFServiceTrait extends android.app.Service {
 
-  var context:Context = null                        // must be set by activity onServiceConnected()
+  var context:Context = null                        // set by activity onServiceConnected(), needed for Toast, runOnUiThread, etc
 
-  var activityMsgHandler:Handler = null             // must be set by activity onServiceConnected()
+  var activityMsgHandler:Handler = null             // set by activity onServiceConnected()
 
-  var rfCommHelper:RFCommHelper = null              // must be set by activity onServiceConnected() after new RFCommHelper()
+  var rfCommHelper:RFCommHelper = null              // set by activity onServiceConnected() after new RFCommHelper()
 
-  var connectedThread:ConnectedThreadTrait = null   // will be created by RFCommHelperService in connectedBt() or connectedWiFi
+  var connectedThread:ConnectedThreadTrait = null   // created by RFCommHelperService in connectedBt() or in connectedWiFi()
+
+  def setContextMsgHandler(setContext:Context,setActivityMsgHandler:Handler)
+  def setRfCommHelper(setRfCommHelper:RFCommHelper)
+  def getRfCommHelper() :RFCommHelper
 
   def createConnectedThread()
 }
