@@ -41,5 +41,9 @@ trait RFServiceTrait extends android.app.Service {
   def getRfCommHelper() :RFCommHelper
 
   def createConnectedThread()
+
+  def connectViaBackupHost()
+
+  def stopActiveConnection()
 }
 

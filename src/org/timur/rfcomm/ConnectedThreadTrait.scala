@@ -31,13 +31,8 @@ trait ConnectedThreadTrait extends Thread {
            socketCloseFkt:() => Unit)
 
   def doFirstActor()
-
-  def cancel()
-
   def isRunning() :Boolean
-
-  def disconnectBackupConnection()
-
-  def updateStreams(setMmInStream:InputStream, setMmOutStream:OutputStream)
+  def isConnected() :Boolean
+  def cancel()
 }
 
