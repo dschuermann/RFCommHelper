@@ -78,31 +78,29 @@ import android.nfc.tech.NfcF
 import java.util.Locale
 
 object RFCommHelperService {
-  @scala.reflect.BeanProperty val STATE_NONE = 0        // doing nothing
-  @scala.reflect.BeanProperty val STATE_LISTEN = 1      // not yet connected but listening for incoming connections
-  @scala.reflect.BeanProperty val STATE_CONNECTING = 2  // connected to at least one remote device
+  @scala.reflect.BeanProperty val STATE_NONE = 0        // not connected and not listening for incoming connections
+  @scala.reflect.BeanProperty val STATE_LISTEN = 1      // not connected but listening for incoming connections
+  @scala.reflect.BeanProperty val STATE_CONNECTING = 2  // connecting
   @scala.reflect.BeanProperty val STATE_CONNECTED = 3   // connected to at least one remote device
+
 
   // Message types sent from RFCommHelperService to the activity handler
   @scala.reflect.BeanProperty val MESSAGE_STATE_CHANGE = 1
-  @scala.reflect.BeanProperty val MESSAGE_DEVICE_NAME = 4
-  @scala.reflect.BeanProperty val DEVICE_DISCONNECT = 7
-  @scala.reflect.BeanProperty val CONNECTION_FAILED = 8
-  @scala.reflect.BeanProperty val CONNECTION_START = 9
-  @scala.reflect.BeanProperty val UI_UPDATE = 14
-  @scala.reflect.BeanProperty val ALERT_MESSAGE = 15
-  @scala.reflect.BeanProperty val CONNECTING = 16
+  @scala.reflect.BeanProperty val DEVICE_DISCONNECT = 7 // todo: how is this different from MESSAGE_STATE_CHANGE ?
 
-  // Key names received from RFCommHelperService to the activity handler
+  @scala.reflect.BeanProperty val CONNECTION_START = 9
+  @scala.reflect.BeanProperty val CONNECTING = 16       // todo: how is this different from CONNECTION_START
+
+  @scala.reflect.BeanProperty val CONNECTION_FAILED = 8 // todo: how is this different from MESSAGE_STATE_CHANGE ?
+
+  @scala.reflect.BeanProperty val MESSAGE_DEVICE_NAME = 4 // todo: how is this different from MESSAGE_STATE_CHANGE ?
+
+  @scala.reflect.BeanProperty val UI_UPDATE = 14        // non-alert message
+  @scala.reflect.BeanProperty val ALERT_MESSAGE = 15    // alert-message (user must confirm?)
+
+  // Key names received from Service to the activity handler
   val DEVICE_NAME = "device_name"
   val DEVICE_ADDR = "device_addr"
-  val SOCKET_TYPE = "socket_type"
-  val DELIVER_ID = "deliver_id"
-  val DELIVER_PROGRESS = "deliver_progress"
-  val DELIVER_BYTES = "deliver_bytes"
-  val DELIVER_TYPE = "deliver_type"
-  val DELIVER_FILENAME = "deliver_filename"
-  val DELIVER_URI = "deliver_uri"
 } 
 
 class RFCommHelperService extends android.app.Service {
@@ -113,7 +111,7 @@ class RFCommHelperService extends android.app.Service {
   var activity:Activity = null            // set by activity on new ServiceConnection()
   var activityMsgHandler:Handler = null   // set by activity on new ServiceConnection()
   var appService:RFServiceTrait = null
-  var connectedRadio:Int = 0
+  var connectedRadio:Int = 0              // todo: not happy with this solution
   val wifiP2pDeviceArrayList = new ArrayList[WifiP2pDevice]()
   var discoveringPeersInProgress = false  // so we do not call discoverPeers() again while it is active still
   var isWifiP2pEnabled = false            // if false in onResume, we will offer ACTION_WIRELESS_SETTINGS 
@@ -130,7 +128,7 @@ class RFCommHelperService extends android.app.Service {
   var activityRuntimeClass:java.lang.Class[Activity] = null  // needed for nfcPendingIntent only
   var nfcForegroundPushMessage:NdefMessage = null
   var desiredBluetooth = false
-  var pairedBtOnly = false // may only be false for sdk>=10 (2.3.3+)
+  var pairedBtOnly = false // support insecure bt if set false, false value only evaluated for sdk>=10 (2.3.3+)
   var desiredWifiDirect = false
   var desiredNfc = false
   var prefsSharedP2pBt:SharedPreferences = null
@@ -179,12 +177,12 @@ class RFCommHelperService extends android.app.Service {
     if(myBtAddr==null) {
       myBtAddr = mBluetoothAdapter.getAddress
       if(myBtAddr==null)
-        myBtAddr = "unknown"  // tmtmtm
+        myBtAddr = "unknown"  // todo
     }
     if(myBtName==null) {
       myBtName = mBluetoothAdapter.getName
       if(myBtName==null)
-        myBtName = "unknown"  // tmtmtm
+        myBtName = "unknown"  // todo
     }
     if(D) Log.i(TAG, "start myBtName="+myBtName+" myBtAddr="+myBtAddr+" mBluetoothAdapter="+mBluetoothAdapter+" pairedBtOnly="+pairedBtOnly)
 
@@ -241,7 +239,7 @@ class RFCommHelperService extends android.app.Service {
   // called by the activity: as a result of NfcAdapter.ACTION_NDEF_DISCOVERED
   def connectBt(newRemoteDevice:BluetoothDevice, reportConnectState:Boolean=true, onstartEnableBackupConnection:Boolean=false) :Unit = synchronized {
     if(newRemoteDevice==null) {
-      Log.e(TAG, "connect() newRemoteDevice==null, give up")
+      Log.e(TAG, "connect() remoteDevice==null, abort")
       return
     }
 
@@ -280,6 +278,7 @@ class RFCommHelperService extends android.app.Service {
     if(!RFCommHelper.WIFI_DIRECT_SUPPORTED)
       return
 
+    // wrong attempt to fix p2pWifi issues
     //p2pChannel = wifiP2pManager.initialize(activity, activity.getMainLooper, null)
 
     connectedRadio = 2 // wifi
@@ -630,6 +629,7 @@ class RFCommHelperService extends android.app.Service {
       val mmOutStream = if(socket!=null) socket.getOutputStream else null
 
 /*
+// todo: attempt to allow nfc-connect on running backup-connection
       if(appService.connectedThread!=null && appService.connectedThread.isRunning) {
         // re-connect a bt connection after it was disconnected
         // todo: but only if a BackupConnection is in use     
@@ -676,7 +676,6 @@ class RFCommHelperService extends android.app.Service {
           val bundle = new Bundle
           bundle.putString(RFCommHelperService.DEVICE_NAME, remoteBtNameString)
           bundle.putString(RFCommHelperService.DEVICE_ADDR, remoteBtAddrString)
-          bundle.putBoolean(RFCommHelperService.SOCKET_TYPE, pairedBtOnly)
           msg.setData(bundle)
           activityMsgHandler.sendMessage(msg)
         }
@@ -715,6 +714,7 @@ class RFCommHelperService extends android.app.Service {
         val mmOutStream = socket.getOutputStream
         if(mmOutStream!=null) {
 /*
+// todo: attempt to allow nfc-connect on running backup-connection
           if(appService.connectedThread!=null && appService.connectedThread.isRunning) {
             // re-connect a bt connection after it was disconnected
             // todo: but only if a BackupConnection is in use     
@@ -754,7 +754,6 @@ class RFCommHelperService extends android.app.Service {
               val bundle = new Bundle
               bundle.putString(RFCommHelperService.DEVICE_NAME, myRemoteWifiNameString)
               bundle.putString(RFCommHelperService.DEVICE_ADDR, remoteWifiAddrString)
-              bundle.putBoolean(RFCommHelperService.SOCKET_TYPE, false) // not supported for wifi
               msg.setData(bundle)
               activityMsgHandler.sendMessage(msg)
             }
@@ -815,7 +814,8 @@ class RFCommHelperService extends android.app.Service {
             AndrTools.runOnUiThread(activity) { () =>
               // This method must be called from the main thread, and only when the activity is in the foreground (resumed). 
               // Also, activities must call disableForegroundDispatch(Activity) before the completion of their onPause() callback 
-// todo: try catch: java.lang.IllegalStateException: Foreground dispatch can only be enabled when your activity is resumed
+              // todo: try catch: java.lang.IllegalStateException: Foreground dispatch can only be enabled when your activity is resumed
+              //       should never happen
               mNfcAdapter.enableForegroundDispatch(activity, nfcPendingIntent, nfcFilters, nfcTechLists)
               if(D) Log.i(TAG, "nfcServiceSetup enableForegroundDispatch done")
             }
@@ -1073,6 +1073,7 @@ class RFCommHelperService extends android.app.Service {
                 if(p2pConnected) {
                   if(D) Log.d(TAG, "closeDownP2p wifiP2pManager.removeGroup() (this is how we disconnect from p2pWifi) SKIP ##################")
 /*
+// todo: related to p2pWifi issue, not sure if this is necessary
                   wifiP2pManager.removeGroup(p2pChannel, new ActionListener() {
                     override def onSuccess() {
                       if(D) Log.i(TAG, "closeDownP2p wifiP2pManager.removeGroup() success")
