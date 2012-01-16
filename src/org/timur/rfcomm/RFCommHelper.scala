@@ -338,11 +338,11 @@ class RFCommHelper(activity:Activity,
     val radioPairlessBtCheckbox = new CheckBox(activity)
     radioPairlessBtCheckbox.setText("Pairless Bluetooth")
     radioPairlessBtCheckbox.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP,19.0f)
-    if(android.os.Build.VERSION.SDK_INT<10 || !radioBluetoothCheckbox.isChecked) {
+    if(android.os.Build.VERSION.SDK_INT<10) {
       radioPairlessBtCheckbox.setEnabled(false)
       radioPairlessBtCheckbox.setChecked(false)
     } else {
-      radioPairlessBtCheckbox.setEnabled(true)
+      radioPairlessBtCheckbox.setEnabled(radioBluetoothCheckbox.isChecked)
       radioPairlessBtCheckbox.setChecked(!rfCommService.pairedBtOnly)
       
       // disable radioPairlessBtCheckbox if radioBluetoothCheckbox is disabled
