@@ -58,6 +58,8 @@ import android.widget.CheckBox
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.ArrayAdapter
+import android.widget.CompoundButton
+import android.widget.CompoundButton.OnCheckedChangeListener
 import android.media.MediaPlayer
 import android.view.KeyEvent
 import android.view.View
@@ -225,15 +227,15 @@ class RFCommHelper(activity:Activity,
       }
 
       // rfCommService is initialized
+
+      // we need to call our onResumeAction method ourselfs now, because the original 1st onResume was not able to call us, because this service was not yet loaded then
       if(D) Log.i(TAG, "constructor rfCommServiceConnection onServiceConnected activityResumed="+rfCommService.activityResumed+" -> onResume")
-      //if(rfCommService.activityResumed) {
-        // todo: but what if not?
-        new Thread() {
-          override def run() {
-            onResume  // this will run radioSelect and start the AcceptThread(s)
-          }
-        }.start                        
-      //}
+      new Thread() {
+        override def run() {
+          onResumeAction  // this will run radioSelect and start the AcceptThread(s)
+        }
+      }.start                        
+
       if(D) Log.i(TAG, "constructor rfCommServiceConnection onServiceConnected -> allOK")
       if(allOK!=null)
         allOK()
@@ -342,8 +344,16 @@ class RFCommHelper(activity:Activity,
     } else {
       radioPairlessBtCheckbox.setEnabled(true)
       radioPairlessBtCheckbox.setChecked(!rfCommService.pairedBtOnly)
+      
+      // disable radioPairlessBtCheckbox if radioBluetoothCheckbox is disabled
+      radioBluetoothCheckbox.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+        override def onCheckedChanged(buttonView:CompoundButton, isChecked:Boolean) {
+          radioPairlessBtCheckbox.setEnabled(isChecked)
+        }
+      })
     }
     radioSelectDialogLayout.addView(radioPairlessBtCheckbox)
+
 
     val radioWifiDirectCheckbox = new CheckBox(activity)
     if(RFCommHelper.WIFI_DIRECT_SUPPORTED && (radioTypeWanted&RFCommHelper.RADIO_P2PWIFI)!=0) {
@@ -436,6 +446,13 @@ class RFCommHelper(activity:Activity,
                 if(rfCommService.desiredNfc && rfCommService.mNfcAdapter!=null && rfCommService.mNfcAdapter.isEnabled) {
                   if(D) Log.i(TAG, "onResume after radioSelectDialog -> nfcServiceSetup")
                   rfCommService.nfcServiceSetup
+                } else {
+                  // disable nfc
+                  if(rfCommService.mNfcAdapter!=null && rfCommService.mNfcAdapter.isEnabled) {
+                    if(rfCommService.activityResumed)
+                      rfCommService.mNfcAdapter.disableForegroundDispatch(activity)
+                    rfCommService.mNfcAdapter.setNdefPushMessage(null, activity)
+                  }
                 }
 
                 switchOnDesiredRadios  // open wireless settings and let user enable radio-hw
@@ -475,8 +492,12 @@ class RFCommHelper(activity:Activity,
     }
 
     rfCommService.activityResumed = true
-    if(D) Log.i(TAG, "onResume set rfCommService.activityResumed=true")
+    if(D) Log.i(TAG, "onResume set rfCommService.activityResumed=true -> onResumeAction()")
+    
+    onResumeAction
+  }
 
+  def onResumeAction() {
     if((radioTypeWanted&RFCommHelper.RADIO_NFC)!=0 && rfCommService.mNfcAdapter==null) {
       // find out if nfc hardware is supported (not necessarily on)
       if(android.os.Build.VERSION.SDK_INT>=10 && rfCommService.mNfcAdapter==null) {
@@ -586,6 +607,14 @@ class RFCommHelper(activity:Activity,
         if(rfCommService.desiredNfc && rfCommService.mNfcAdapter!=null && rfCommService.mNfcAdapter.isEnabled) {
           if(D) Log.i(TAG, "onResume -> nfcServiceSetup")
           rfCommService.nfcServiceSetup
+        } else {
+          // disable nfc
+          if(rfCommService.mNfcAdapter!=null && rfCommService.mNfcAdapter.isEnabled) {
+            if(D) Log.i(TAG, "onResume disable nfc - activityResumed="+rfCommService.activityResumed)
+            if(rfCommService.activityResumed)
+              rfCommService.mNfcAdapter.disableForegroundDispatch(activity)
+            rfCommService.mNfcAdapter.setNdefPushMessage(null, activity)
+          }
         }
       }
 
@@ -911,7 +940,7 @@ class RFCommHelper(activity:Activity,
   }
 
   def isNfcEnabled() :Boolean = {
-    if(android.os.Build.VERSION.SDK_INT>=10 && rfCommService.mNfcAdapter!=null && rfCommService.mNfcAdapter.isEnabled)
+    if(android.os.Build.VERSION.SDK_INT>=10 && rfCommService.mNfcAdapter!=null && rfCommService.mNfcAdapter.isEnabled && rfCommService.desiredNfc)
       return true
     return false
   }
