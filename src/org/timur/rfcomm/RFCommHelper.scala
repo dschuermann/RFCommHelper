@@ -232,7 +232,7 @@ class RFCommHelper(activity:Activity,
       if(D) Log.i(TAG, "constructor rfCommServiceConnection onServiceConnected activityResumed="+rfCommService.activityResumed+" -> onResume")
       new Thread() {
         override def run() {
-          onResumeAction  // this will run radioSelect and start the AcceptThread(s)
+          onResumeAction(false)  // this will run radioSelect and start the AcceptThread(s)
         }
       }.start                        
 
@@ -275,14 +275,17 @@ class RFCommHelper(activity:Activity,
   }
 
   private def initBt() {
-    // start bluetooth accept thread
-    if(rfCommService.desiredBluetooth && mBluetoothAdapter!=null && mBluetoothAdapter.isEnabled && rfCommService!=null) {
-      if(rfCommService.state == RFCommHelperService.STATE_NONE) {
+    if(rfCommService!=null) {
+      // stop any old bluetooth accept threads
+      rfCommService.stopAcceptThreads
+
+      if(rfCommService.desiredBluetooth && mBluetoothAdapter!=null && mBluetoothAdapter.isEnabled) {
+        // start bluetooth accept thread
         if(D) Log.i(TAG, "initBt rfCommService.start pairedBtOnly="+rfCommService.pairedBtOnly+" ...")
-        rfCommService.start() // -> bt (new AcceptThread()).start -> run()
+        rfCommService.start // -> bt (new AcceptThread()).start -> run()
       }
 
-      // show user that bt is activated and available
+      // display state of bt
       msgFromServiceHandler.obtainMessage(RFCommHelperService.UI_UPDATE, -1, -1).sendToTarget
     }
   }
@@ -483,21 +486,7 @@ class RFCommHelper(activity:Activity,
   }
 */
 
-  def onResume() {
-    if(D) Log.i(TAG, "onResume mNfcAdapter="+rfCommService.mNfcAdapter+" wifiP2pManager="+rfCommService.wifiP2pManager+" isWifiP2pEnabled="+rfCommService.isWifiP2pEnabled)
-
-    if(rfCommService==null) {
-      Log.e(TAG, "onResume rfCommService==null, abort onResume ##################")
-      return
-    }
-
-    rfCommService.activityResumed = true
-    if(D) Log.i(TAG, "onResume set rfCommService.activityResumed=true -> onResumeAction()")
-    
-    onResumeAction
-  }
-
-  def onResumeAction() {
+  def onResumeAction(checkResumed:Boolean) {
     if((radioTypeWanted&RFCommHelper.RADIO_NFC)!=0 && rfCommService.mNfcAdapter==null) {
       // find out if nfc hardware is supported (not necessarily on)
       if(android.os.Build.VERSION.SDK_INT>=10 && rfCommService.mNfcAdapter==null) {
@@ -577,7 +566,7 @@ class RFCommHelper(activity:Activity,
       }
 
       // check activityResumed state after sleep
-      if(rfCommService.activityResumed==false) {
+      if(checkResumed && rfCommService.activityResumed==false) {
         if(D) Log.i(TAG, "onResume rfCommService.activityResumed==false abort")
         return
       }
@@ -632,12 +621,12 @@ class RFCommHelper(activity:Activity,
     }
 
     // check activityResumed again
-    if(rfCommService.activityResumed==false) {
+    if(checkResumed && rfCommService.activityResumed==false) {
       if(D) Log.i(TAG, "onResume before nfc rfCommService.activityResumed==false abort")
       return
     }
 
-    if(rfCommService.mNfcAdapter!=null && rfCommService.mNfcAdapter.isEnabled) {
+    if(rfCommService.desiredNfc && rfCommService.mNfcAdapter!=null && rfCommService.mNfcAdapter.isEnabled) {
       if(rfCommService.nfcPendingIntent==null) {
         Log.e(TAG, "onResume rfCommService.nfcPendingIntent==null cannot do enableForegroundDispatch")
 
@@ -659,19 +648,37 @@ class RFCommHelper(activity:Activity,
     }
   }
 
+  def onResume() {
+    if(D) Log.i(TAG, "onResume mNfcAdapter="+rfCommService.mNfcAdapter+" wifiP2pManager="+rfCommService.wifiP2pManager+" isWifiP2pEnabled="+rfCommService.isWifiP2pEnabled)
+
+    if(rfCommService==null) {
+      Log.e(TAG, "onResume rfCommService==null abort ##################")
+      return
+    }
+
+    rfCommService.activityResumed = true
+    if(D) Log.i(TAG, "onResume set rfCommService.activityResumed=true -> onResumeAction()")
+    
+    onResumeAction(true)
+  }
+
+
   def onPause() {
     if(D) Log.i(TAG, "onPause...")
     // todo tmtmtm: if this is just a "small onPause" (triggered by nfc-system-animation)
     //              rfcommservice will NOT be able to answer an incoming bt-connect-request   
-    if(rfCommService!=null) {
-      rfCommService.activityResumed = false
-      if(rfCommService.mNfcAdapter!=null && rfCommService.mNfcAdapter.isEnabled) {
-        rfCommService.mNfcAdapter.disableForegroundDispatch(activity)
-        rfCommService.mNfcAdapter.setNdefPushMessage(null, activity)
-        if(D) Log.i(TAG, "onPause setNdefPushMessage null done")
-      }
-    } else {
-      Log.e(TAG, "onPause rfCommService==null, activityResumed not cleared")
+
+    if(rfCommService==null) {
+      Log.e(TAG, "onPause rfCommService==null, abort ##################")
+      return
+    }
+
+    rfCommService.activityResumed = false
+
+    if(rfCommService.mNfcAdapter!=null && rfCommService.mNfcAdapter.isEnabled) {
+      rfCommService.mNfcAdapter.disableForegroundDispatch(activity)
+      rfCommService.mNfcAdapter.setNdefPushMessage(null, activity)
+      if(D) Log.i(TAG, "onPause disable ForegroundDispatch + NdefPushMessage done")
     }
   }
 
