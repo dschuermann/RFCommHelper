@@ -85,16 +85,10 @@ object RFCommHelperService {
 
   // Message types sent from RFCommHelperService to the activity handler
   @scala.reflect.BeanProperty val MESSAGE_STATE_CHANGE = 1
-  @scala.reflect.BeanProperty val MESSAGE_USERHINT1 = 2
-  @scala.reflect.BeanProperty val MESSAGE_USERHINT2 = 3
   @scala.reflect.BeanProperty val MESSAGE_DEVICE_NAME = 4
   @scala.reflect.BeanProperty val DEVICE_DISCONNECT = 7
   @scala.reflect.BeanProperty val CONNECTION_FAILED = 8
   @scala.reflect.BeanProperty val CONNECTION_START = 9
-  @scala.reflect.BeanProperty val MESSAGE_REDRAW_DEVICEVIEW = 10
-  @scala.reflect.BeanProperty val MESSAGE_DELIVER_PROGRESS = 11
-  @scala.reflect.BeanProperty val MESSAGE_YOURTURN = 12
-  @scala.reflect.BeanProperty val MESSAGE_RECEIVED_FILE = 13
   @scala.reflect.BeanProperty val UI_UPDATE = 14
   @scala.reflect.BeanProperty val ALERT_MESSAGE = 15
   @scala.reflect.BeanProperty val CONNECTING = 16
@@ -814,14 +808,19 @@ class RFCommHelperService extends android.app.Service {
           if(D) Log.i(TAG, "nfcServiceSetup setup a tech list for all NfcF tags...")
           nfcTechLists = Array(Array(classOf[NfcF].getName))
 
-          if(D) Log.i(TAG, "nfcServiceSetup enable nfc dispatch mNfcAdapter="+mNfcAdapter+" activity="+activity+" nfcPendingIntent="+nfcPendingIntent+" nfcFilters="+nfcFilters+" nfcTechLists="+nfcTechLists+" ...")
-
-          // This method must be called from the main thread, and only when the activity is in the foreground (resumed). 
-          // Also, activities must call disableForegroundDispatch(Activity) before the completion of their onPause() callback 
-
-          AndrTools.runOnUiThread(activity) { () =>
-            mNfcAdapter.enableForegroundDispatch(activity, nfcPendingIntent, nfcFilters, nfcTechLists)
-            if(D) Log.i(TAG, "nfcServiceSetup enableForegroundDispatch done")
+          if(D) Log.i(TAG, "nfcServiceSetup enable nfc dispatch mNfcAdapter="+mNfcAdapter+" activity="+activity+
+                           " nfcPendingIntent="+nfcPendingIntent+" nfcFilters="+nfcFilters+" nfcTechLists="+nfcTechLists+" ...")
+          if(D) Log.i(TAG, "nfcServiceSetup activityResumed="+activityResumed)
+          if(activityResumed) {
+            AndrTools.runOnUiThread(activity) { () =>
+              // This method must be called from the main thread, and only when the activity is in the foreground (resumed). 
+              // Also, activities must call disableForegroundDispatch(Activity) before the completion of their onPause() callback 
+// todo: try catch: java.lang.IllegalStateException: Foreground dispatch can only be enabled when your activity is resumed
+              mNfcAdapter.enableForegroundDispatch(activity, nfcPendingIntent, nfcFilters, nfcTechLists)
+              if(D) Log.i(TAG, "nfcServiceSetup enableForegroundDispatch done")
+            }
+          } else {
+            if(D) Log.i(TAG, "nfcServiceSetup skipped enableForegroundDispatch on activityResumed="+activityResumed)
           }
         }
       }
