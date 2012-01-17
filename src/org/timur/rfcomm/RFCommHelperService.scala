@@ -659,7 +659,6 @@ class RFCommHelperService extends android.app.Service {
           activityMsgHandler.sendMessage(msg)
 
           setState(RFCommHelperService.STATE_LISTEN)   // will send MESSAGE_STATE_CHANGE to activity
-          // todo: why? DEVICE_DISCONNECT + MESSAGE_STATE_CHANGE
           
           if(D) Log.i(TAG, "connectedBt post-ConnectedThread processing done")
         })
@@ -692,8 +691,6 @@ class RFCommHelperService extends android.app.Service {
 
   def connectedWifi(socket:java.net.Socket, actor:Boolean, p2pCloseFkt:() => Unit) :Unit = synchronized {
     if(D) Log.i(TAG, "connectedWifi actor="+actor)
-    //if(!RFCommHelper.WIFI_DIRECT_SUPPORTED)
-    //  return
 
     if(socket!=null) {
       connectedRadio = 2 // wifi
@@ -728,6 +725,12 @@ class RFCommHelperService extends android.app.Service {
             appService.connectedThread.init(mmInStream, mmOutStream, localWifiAddrString, localWifiNameString, remoteWifiAddrString, myRemoteWifiNameString, () => { 
               if(D) Log.i(TAG, "connectedWifi post-ConnectedThread processing remoteWifiAddrString="+remoteWifiAddrString+" myRemoteWifiNameString="+myRemoteWifiNameString)
 
+              // disconnect the wifi-socket
+              if(socket!=null) {
+                socket.close
+                //socket=null
+              }
+
               // tell the activity that the connection was lost
               val msg = activityMsgHandler.obtainMessage(RFCommHelperService.DEVICE_DISCONNECT)
               val bundle = new Bundle
@@ -736,7 +739,6 @@ class RFCommHelperService extends android.app.Service {
               msg.setData(bundle)
               activityMsgHandler.sendMessage(msg)
 
-              System.gc    
               p2pCloseFkt() // will close the socket
               setState(RFCommHelperService.STATE_LISTEN)   // will send MESSAGE_STATE_CHANGE to activity
               if(D) Log.i(TAG, "connectedWifi post-ConnectedThread processing done")
@@ -883,10 +885,10 @@ class RFCommHelperService extends android.app.Service {
 
         def closeDownSocket() {
           // this will be called (by both sides) when the thread is finished
-          if(D) Log.d(TAG, "ipClientConnectorThread closeDownSocket p2pConnected="+p2pConnected+" p2pChannel="+p2pChannel)
+          if(D) Log.d(TAG, "ipClientConnectorThread closeDownSocket p2pConnected="+p2pConnected+" p2pChannel="+p2pChannel+" socket="+socket+" serverSocket="+serverSocket)
 
-          // todo: why sleep (so long)?
-          try { Thread.sleep(1200) } catch { case ex:Exception => }
+          // todo: why?
+          try { Thread.sleep(300) } catch { case ex:Exception => }
 
           if(socket!=null) {
             socket.close
@@ -896,6 +898,7 @@ class RFCommHelperService extends android.app.Service {
             serverSocket.close
             serverSocket=null
           }
+
           if(p2pConnected) {
             if(D) Log.d(TAG, "ipClientConnectorThread closeDownSocket -> closeDownP2p="+closeDownP2p)
             if(closeDownP2p!=null)
