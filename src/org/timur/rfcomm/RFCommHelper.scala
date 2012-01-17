@@ -92,8 +92,6 @@ object RFCommHelper {
   @scala.reflect.BeanProperty val RADIO_P2PWIFI:Int = 4
   @scala.reflect.BeanProperty val RADIO_NFC:Int = 8
   
-  val WIFI_DIRECT_SUPPORTED = true
-
   def getBtPairedDevices(activity:Activity):java.util.ArrayList[String] = {
     val pairedDevicesArrayListOfStrings = new java.util.ArrayList[String]()
     val mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter
@@ -158,7 +156,7 @@ class RFCommHelper(activity:Activity,
   private var retryChannel = false
 
   private val intentFilter = new IntentFilter()
-  if(RFCommHelper.WIFI_DIRECT_SUPPORTED && android.os.Build.VERSION.SDK_INT>=14) {
+  if(android.os.Build.VERSION.SDK_INT>=14) {
     intentFilter.addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION)
     intentFilter.addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION)
     intentFilter.addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION)
@@ -219,7 +217,7 @@ class RFCommHelper(activity:Activity,
           rfCommService.desiredBluetooth = prefsPrivate.getBoolean("radioBluetooth", true)
           if(D) Log.i(TAG, "constructor rfCommServiceConnection onServiceConnected rfCommService.desiredBluetooth="+rfCommService.desiredBluetooth)
         }
-        if(RFCommHelper.WIFI_DIRECT_SUPPORTED && (radioTypeWanted & RFCommHelper.RADIO_P2PWIFI)!=0)
+        if((radioTypeWanted & RFCommHelper.RADIO_P2PWIFI)!=0)
           rfCommService.desiredWifiDirect = prefsPrivate.getBoolean("radioWifiDirect", true)
         if((radioTypeWanted & RFCommHelper.RADIO_NFC)!=0)
           rfCommService.desiredNfc = prefsPrivate.getBoolean("radioNfc", true)         
@@ -359,7 +357,7 @@ class RFCommHelper(activity:Activity,
 
 
     val radioWifiDirectCheckbox = new CheckBox(activity)
-    if(RFCommHelper.WIFI_DIRECT_SUPPORTED && (radioTypeWanted&RFCommHelper.RADIO_P2PWIFI)!=0) {
+    if((radioTypeWanted&RFCommHelper.RADIO_P2PWIFI)!=0) {
       radioWifiDirectCheckbox.setText("WiFi Direct not available")
       radioWifiDirectCheckbox.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP,19.0f)
       if(rfCommService.wifiP2pManager==null || android.os.Build.VERSION.SDK_INT<14)
@@ -447,13 +445,19 @@ class RFCommHelper(activity:Activity,
 
                 // initialize nfc (initialize nfc for wifi will come through WiFiDirectBroadcastReceiver WIFI_P2P_THIS_DEVICE_CHANGED_ACTION)
                 if(rfCommService.desiredNfc && rfCommService.mNfcAdapter!=null && rfCommService.mNfcAdapter.isEnabled) {
-                  if(D) Log.i(TAG, "onResume after radioSelectDialog -> nfcServiceSetup")
+                  if(D) Log.i(TAG, "radioDialog after radioSelectDialog -> nfcServiceSetup")
                   rfCommService.nfcServiceSetup
                 } else {
                   // disable nfc
                   if(rfCommService.mNfcAdapter!=null && rfCommService.mNfcAdapter.isEnabled) {
-                    if(rfCommService.activityResumed)
-                      rfCommService.mNfcAdapter.disableForegroundDispatch(activity)
+                    if(rfCommService.activityResumed) {
+                      try {
+                        rfCommService.mNfcAdapter.disableForegroundDispatch(activity)
+                      } catch {
+                        case npex:java.lang.NullPointerException =>
+                          Log.e(TAG, "radioDialog disableForegroundDispatch NullPointerException")
+                      }
+                    }
                     rfCommService.mNfcAdapter.setNdefPushMessage(null, activity)
                   }
                 }
@@ -522,34 +526,32 @@ class RFCommHelper(activity:Activity,
       }
     }
 
-    if(RFCommHelper.WIFI_DIRECT_SUPPORTED) {
-      if((radioTypeWanted&RFCommHelper.RADIO_P2PWIFI)!=0 && rfCommService.wifiP2pManager==null) {
-        // we need to initialze wifiP2pManager and wifiDirectBroadcastReceiver, in order to find out if 1. wifi-direct is supported 2. wifi-direct is enabled
-        // wifiP2pManager will fail if the API is not supported, wifiDirectBroadcastReceiver will tell us if the hardware is enabled
-        if(android.os.Build.VERSION.SDK_INT>=14 && rfCommService.wifiP2pManager==null) {
-          rfCommService.wifiP2pManager = activity.getSystemService(Context.WIFI_P2P_SERVICE).asInstanceOf[WifiP2pManager]
-          if(rfCommService.wifiP2pManager!=null) {
-            // register p2pChannel and wifiDirectBroadcastReceiver
-            // note: this will result in a call to setIsWifiP2pEnabled(), so we know wether p2pWifi is already activated!
-            if(D) Log.i(TAG, "onResumeAction wifiP2p is supported, initialze p2pChannel and register wifiDirectBroadcastReceiver")
-            rfCommService.p2pChannel = rfCommService.wifiP2pManager.initialize(activity, activity.getMainLooper, /*wifiP2pChannelListener*/ null)
-            wifiDirectBroadcastReceiver = rfCommService.newWiFiDirectBroadcastReceiver()
-            activity.registerReceiver(wifiDirectBroadcastReceiver, intentFilter)
+    if((radioTypeWanted&RFCommHelper.RADIO_P2PWIFI)!=0 && rfCommService.wifiP2pManager==null) {
+      // we need to initialze wifiP2pManager and wifiDirectBroadcastReceiver, in order to find out if 1. wifi-direct is supported 2. wifi-direct is enabled
+      // wifiP2pManager will fail if the API is not supported, wifiDirectBroadcastReceiver will tell us if the hardware is enabled
+      if(android.os.Build.VERSION.SDK_INT>=14 && rfCommService.wifiP2pManager==null) {
+        rfCommService.wifiP2pManager = activity.getSystemService(Context.WIFI_P2P_SERVICE).asInstanceOf[WifiP2pManager]
+        if(rfCommService.wifiP2pManager!=null) {
+          // register p2pChannel and wifiDirectBroadcastReceiver
+          // note: this will result in a call to setIsWifiP2pEnabled(), so we know wether p2pWifi is already activated!
+          if(D) Log.i(TAG, "onResumeAction wifiP2p is supported, initialze p2pChannel and register wifiDirectBroadcastReceiver")
+          rfCommService.p2pChannel = rfCommService.wifiP2pManager.initialize(activity, activity.getMainLooper, /*wifiP2pChannelListener*/ null)
+          wifiDirectBroadcastReceiver = rfCommService.newWiFiDirectBroadcastReceiver()
+          activity.registerReceiver(wifiDirectBroadcastReceiver, intentFilter)
 
-            rfCommService.wifiP2pManager.discoverPeers(rfCommService.p2pChannel, new WifiP2pManager.ActionListener() {
-              override def onFailure(reasonCode:Int) {
-                val reasonString = if(reasonCode==0) "Error" else if(reasonCode==1) "P2P_UNSUPPORTED" else if(reasonCode==2) "Busy" else "unknown"
-                if(D) Log.i(TAG, "onResumeAction wifiP2pManager.discoverPeers failed reasonCode="+reasonCode+" "+reasonString)
-              }
-              override def onSuccess() {
-                //if(D) Log.i(TAG, "addAllDevices wifiP2pManager.discoverPeers onSuccess")
-              }
-            })
-          }
+          rfCommService.wifiP2pManager.discoverPeers(rfCommService.p2pChannel, new WifiP2pManager.ActionListener() {
+            override def onFailure(reasonCode:Int) {
+              val reasonString = if(reasonCode==0) "Error" else if(reasonCode==1) "P2P_UNSUPPORTED" else if(reasonCode==2) "Busy" else "unknown"
+              if(D) Log.i(TAG, "onResumeAction wifiP2pManager.discoverPeers failed reasonCode="+reasonCode+" "+reasonString)
+            }
+            override def onSuccess() {
+              //if(D) Log.i(TAG, "addAllDevices wifiP2pManager.discoverPeers onSuccess")
+            }
+          })
         }
-        if(rfCommService.wifiP2pManager==null) {
-          if(D) Log.i(TAG, "onResumeAction wifiP2p not supported")
-        }
+      }
+      if(rfCommService.wifiP2pManager==null) {
+        if(D) Log.i(TAG, "onResumeAction wifiP2p not supported")
       }
     }
 
@@ -602,8 +604,14 @@ class RFCommHelper(activity:Activity,
           // disable nfc
           if(rfCommService.mNfcAdapter!=null && rfCommService.mNfcAdapter.isEnabled) {
             if(D) Log.i(TAG, "onResumeAction disable nfc - activityResumed="+rfCommService.activityResumed)
-            if(rfCommService.activityResumed)
-              rfCommService.mNfcAdapter.disableForegroundDispatch(activity)
+            if(rfCommService.activityResumed) {
+              try {
+                rfCommService.mNfcAdapter.disableForegroundDispatch(activity)
+              } catch {
+                case npex:java.lang.NullPointerException =>
+                  Log.e(TAG, "onResumeAction disable nfc - NullPointerException")
+              }
+            }
             rfCommService.mNfcAdapter.setNdefPushMessage(null, activity)
           }
         }
@@ -638,8 +646,13 @@ class RFCommHelper(activity:Activity,
           // enableForegroundDispatch() must be called from the main thread, and only when the activity is in the foreground (resumed). 
           // Also, activities must call disableForegroundDispatch(Activity) before the completion of their onPause() 
           // callback to disable foreground dispatch after it has been enabled. 
-          rfCommService.mNfcAdapter.enableForegroundDispatch(activity, rfCommService.nfcPendingIntent, rfCommService.nfcFilters, rfCommService.nfcTechLists)
-          if(D) Log.i(TAG, "onResumeAction enableForegroundDispatch done")
+          try {
+            rfCommService.mNfcAdapter.enableForegroundDispatch(activity, rfCommService.nfcPendingIntent, rfCommService.nfcFilters, rfCommService.nfcTechLists)
+            if(D) Log.i(TAG, "onResumeAction enableForegroundDispatch done")
+          } catch {
+            case npex:java.lang.NullPointerException =>
+              Log.e(TAG, "onResumeAction rfCommService.mNfcAdapter.enableForegroundDispatch NullPointerException")
+          }
         }
       }
       if(rfCommService.nfcForegroundPushMessage!=null) {
@@ -678,7 +691,12 @@ class RFCommHelper(activity:Activity,
     rfCommService.activityResumed = false
 
     if(rfCommService.mNfcAdapter!=null && rfCommService.mNfcAdapter.isEnabled) {
-      rfCommService.mNfcAdapter.disableForegroundDispatch(activity)
+      try {
+        rfCommService.mNfcAdapter.disableForegroundDispatch(activity)
+      } catch {
+        case npex:java.lang.NullPointerException =>
+          Log.e(TAG, "onPause  disableForegroundDispatch NullPointerException")
+      }
       rfCommService.mNfcAdapter.setNdefPushMessage(null, activity)
       if(D) Log.i(TAG, "onPause disable ForegroundDispatch + NdefPushMessage done")
     }
@@ -818,7 +836,7 @@ class RFCommHelper(activity:Activity,
             mediaConfirmSound.start
           rfCommService.connectIp(ipAddr, "ip-target")
 
-        } else if(RFCommHelper.WIFI_DIRECT_SUPPORTED && rfCommService.wifiP2pManager!=null && rfCommService.desiredWifiDirect && idxP2p>=0) {
+        } else if(rfCommService.wifiP2pManager!=null && rfCommService.desiredWifiDirect && idxP2p>=0) {
           // evaluate "p2pWifi=..." for WiFi-Direct mac-addr
           var p2pWifiAddr = ncfActionString.substring(idxP2p+8)
           val idxPipe = p2pWifiAddr.indexOf("|")
@@ -987,21 +1005,19 @@ class RFCommHelper(activity:Activity,
     //}
 
     // 2. add all prev connected and stored wifi devices
-    if(RFCommHelper.WIFI_DIRECT_SUPPORTED) {
-      if(D) Log.i(TAG, "addAllDevices read prefsSharedP2pWifi...")
-      val p2pWifiMap = prefsSharedP2pWifi.getAll   // :map[String, ?]
-      val p2pWifiKeySet = p2pWifiMap.keySet
-      val p2pWifiIterator = p2pWifiKeySet.iterator
-      while(p2pWifiIterator.hasNext) {
-        val addr = p2pWifiIterator.next
-        val name = prefsSharedP2pWifi.getString(addr,null)
-        //if(D) Log.i(TAG, "addAllDevices read prefsSharedP2pWifi "+addr+" = "+name)
-        if(name!=null && name.length>0) {
-          if(pairedDevicesShadowHashMap.getOrElse(addr,null)==null) {
-            pairedDevicesShadowHashMap += addr -> name
-            arrayAdapter.add(name+"\n"+addr+" wifi stored")
-            if(D) Log.i(TAG, "addAllDevices prefsSharedP2pWifi name=["+name+"] addr="+addr+" arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size)
-          }
+    if(D) Log.i(TAG, "addAllDevices read prefsSharedP2pWifi...")
+    val p2pWifiMap = prefsSharedP2pWifi.getAll   // :map[String, ?]
+    val p2pWifiKeySet = p2pWifiMap.keySet
+    val p2pWifiIterator = p2pWifiKeySet.iterator
+    while(p2pWifiIterator.hasNext) {
+      val addr = p2pWifiIterator.next
+      val name = prefsSharedP2pWifi.getString(addr,null)
+      //if(D) Log.i(TAG, "addAllDevices read prefsSharedP2pWifi "+addr+" = "+name)
+      if(name!=null && name.length>0) {
+        if(pairedDevicesShadowHashMap.getOrElse(addr,null)==null) {
+          pairedDevicesShadowHashMap += addr -> name
+          arrayAdapter.add(name+"\n"+addr+" wifi stored")
+          if(D) Log.i(TAG, "addAllDevices prefsSharedP2pWifi name=["+name+"] addr="+addr+" arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size)
         }
       }
     }
@@ -1053,7 +1069,7 @@ class RFCommHelper(activity:Activity,
       }
     }
 
-    if(RFCommHelper.WIFI_DIRECT_SUPPORTED && rfCommService.desiredWifiDirect) {
+    if(rfCommService.desiredWifiDirect) {
       // 5. start handler for freshly discovered p2pWifi devices
       if(rfCommService.wifiP2pManager!=null) {
         rfCommService.p2pWifiDiscoveredCallbackFkt = { wifiP2pDevice =>
@@ -1101,7 +1117,7 @@ class RFCommHelper(activity:Activity,
     if(D) Log.i(TAG, "addAllDevicesUnregister")
     if(rfCommService!=null) {
       // not interested anymore in wifi device discovery
-      if(RFCommHelper.WIFI_DIRECT_SUPPORTED && rfCommService.p2pWifiDiscoveredCallbackFkt!=null) {
+      if(rfCommService.p2pWifiDiscoveredCallbackFkt!=null) {
         if(D) Log.i(TAG, "addAllDevicesUnregister rfCommService.callbackFkt=null")
         rfCommService.p2pWifiDiscoveredCallbackFkt = null
       }

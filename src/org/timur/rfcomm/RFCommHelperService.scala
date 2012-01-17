@@ -275,8 +275,8 @@ class RFCommHelperService extends android.app.Service {
                   onstartEnableBackupConnection:Boolean=false) :Unit = synchronized {
     // todo: onstartEnableBackupConnection not yet being evaluated
     
-    if(!RFCommHelper.WIFI_DIRECT_SUPPORTED)
-      return
+    //if(!RFCommHelper.WIFI_DIRECT_SUPPORTED)
+    //  return
 
     // wrong attempt to fix p2pWifi issues
     //p2pChannel = wifiP2pManager.initialize(activity, activity.getMainLooper, null)
@@ -692,8 +692,8 @@ class RFCommHelperService extends android.app.Service {
 
   def connectedWifi(socket:java.net.Socket, actor:Boolean, p2pCloseFkt:() => Unit) :Unit = synchronized {
     if(D) Log.i(TAG, "connectedWifi actor="+actor)
-    if(!RFCommHelper.WIFI_DIRECT_SUPPORTED)
-      return
+    //if(!RFCommHelper.WIFI_DIRECT_SUPPORTED)
+    //  return
 
     if(socket!=null) {
       connectedRadio = 2 // wifi
@@ -833,7 +833,7 @@ class RFCommHelperService extends android.app.Service {
           nfcString += "|"
         nfcString += "bt="+btAddress
       }
-      if(RFCommHelper.WIFI_DIRECT_SUPPORTED && desiredWifiDirect && localP2pWifiAddr!=null) {
+      if(desiredWifiDirect && localP2pWifiAddr!=null) {
         if(nfcString.length>0)
           nfcString += "|"
         nfcString += "p2pWifi="+localP2pWifiAddr
@@ -950,8 +950,8 @@ class RFCommHelperService extends android.app.Service {
 
 
   def newWiFiDirectBroadcastReceiver() :WiFiDirectBroadcastReceiver = {
-    if(!RFCommHelper.WIFI_DIRECT_SUPPORTED)
-      return null
+    //if(!RFCommHelper.WIFI_DIRECT_SUPPORTED)
+    //  return null
     return new WiFiDirectBroadcastReceiver()
   }
 
