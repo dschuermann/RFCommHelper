@@ -231,12 +231,11 @@ class RFCommHelper(activity:Activity,
       new Thread() {
         override def run() {
           onResumeAction(false)  // this will run radioSelect and start the AcceptThread(s)
+          if(D) Log.i(TAG, "constructor rfCommServiceConnection onServiceConnected post onResumeAction -> allOK")
+          if(allOK!=null)
+            allOK()
         }
       }.start                        
-
-      if(D) Log.i(TAG, "constructor rfCommServiceConnection onServiceConnected -> allOK")
-      if(allOK!=null)
-        allOK()
     } 
   } 
   if(rfCommServiceConnection!=null) {
@@ -274,13 +273,13 @@ class RFCommHelper(activity:Activity,
 
   private def initBt() {
     if(rfCommService!=null) {
-      // stop any old bluetooth accept threads
-      rfCommService.stopAcceptThreads
-
       if(rfCommService.desiredBluetooth && mBluetoothAdapter!=null && mBluetoothAdapter.isEnabled) {
         // start bluetooth accept thread
+        // stop any old bluetooth accept threads
+        rfCommService.stopAcceptThreads
+
         if(D) Log.i(TAG, "initBt rfCommService.start pairedBtOnly="+rfCommService.pairedBtOnly+" ...")
-        rfCommService.start // -> bt (new AcceptThread()).start -> run()
+        rfCommService.startBtAcceptThreads // -> bt (new AcceptThread()).start -> run()
       }
 
       // display state of bt
@@ -440,6 +439,8 @@ class RFCommHelper(activity:Activity,
                 // persist desired-flags
                 storeRadioSelection(rfCommService.desiredBluetooth,rfCommService.desiredWifiDirect,rfCommService.desiredNfc, rfCommService.pairedBtOnly)
 
+                switchOnDesiredRadios
+
                 // start bt-accept-thread
                 initBt
 
@@ -462,7 +463,6 @@ class RFCommHelper(activity:Activity,
                   }
                 }
 
-                switchOnDesiredRadios  // open wireless settings and let user enable radio-hw
                 radioDialogPossibleAndNotYetShown = false  // radioDialog will not again be shown on successive onResume's
               }
             })
@@ -594,7 +594,7 @@ class RFCommHelper(activity:Activity,
 
       } else {
         radioDialogPossibleAndNotYetShown = false
-        initBt()  // start bt-accept-thread and init-nfc
+        initBt  // start bt-accept-thread and init-nfc
 
         // initialize nfc (initialize nfc for wifi will come through WiFiDirectBroadcastReceiver WIFI_P2P_THIS_DEVICE_CHANGED_ACTION)
         if(rfCommService.desiredNfc && rfCommService.mNfcAdapter!=null && rfCommService.mNfcAdapter.isEnabled) {
@@ -959,10 +959,15 @@ class RFCommHelper(activity:Activity,
       // -> onActivityResult/REQUEST_ENABLE_BT -> if(resultCode == Activity.RESULT_OK) nfcServiceSetup()
       // todo: onexit: offer to disable BT
 */
-      if(D) Log.i(TAG, "switchOnDesiredRadios  auto-enable bt")
-      mBluetoothAdapter.enable
-      autoEnabledBt = true
-      // todo: onexit: auto-disable BT
+      if(D) Log.i(TAG, "switchOnDesiredRadios auto-enable bt")
+      mBluetoothAdapter.enable // this may take some time
+      var waitMS = 6000
+      autoEnabledBt = true // so we don't forget to switch it off on exit
+      while(!mBluetoothAdapter.isEnabled && waitMS>0) {
+        if(D) Log.i(TAG, "switchOnDesiredRadios mBluetoothAdapter.isEnabled="+mBluetoothAdapter.isEnabled)
+        try { Thread.sleep(500) } catch { case ex:Exception => }
+        waitMS-=500
+      }
     }
   }
 

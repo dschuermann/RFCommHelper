@@ -160,7 +160,7 @@ class RFCommHelperService extends android.app.Service {
   override def onBind(intent:Intent) :IBinder = localBinder 
 
   override def onCreate() {
-    //if(D) Log.i(TAG, "onCreate")
+    if(D) Log.i(TAG, "onCreate")
     // note: our service is started via bindService() from RFCommHelper constructor (from activity onCreate())
     //       but it is not yet clear wether "bt new AcceptThread" is needed
     //       when it is clear this is wanted, activity will call start() from onResume()
@@ -169,8 +169,8 @@ class RFCommHelperService extends android.app.Service {
   // called by Activity onResume() 
   // but only while state == STATE_NONE
   // this is why we quickly switch state to STATE_LISTEN
-  def start() = synchronized {
-    if(D) Log.i(TAG, "start! android.os.Build.VERSION.SDK_INT="+android.os.Build.VERSION.SDK_INT+" pairedBtOnly="+pairedBtOnly+" activityResumed="+activityResumed)
+  def startBtAcceptThreads() = synchronized {
+    if(D) Log.i(TAG, "startBtAcceptThreads android.os.Build.VERSION.SDK_INT="+android.os.Build.VERSION.SDK_INT+" pairedBtOnly="+pairedBtOnly+" activityResumed="+activityResumed)
     setState(RFCommHelperService.STATE_LISTEN)   // this will send MESSAGE_STATE_CHANGE
 
     // in case bt was turned on _after_ app start
@@ -184,11 +184,11 @@ class RFCommHelperService extends android.app.Service {
       if(myBtName==null)
         myBtName = "unknown"  // todo
     }
-    if(D) Log.i(TAG, "start myBtName="+myBtName+" myBtAddr="+myBtAddr+" mBluetoothAdapter="+mBluetoothAdapter+" pairedBtOnly="+pairedBtOnly)
+    if(D) Log.i(TAG, "startBtAcceptThreads myBtName="+myBtName+" myBtAddr="+myBtAddr+" mBluetoothAdapter="+mBluetoothAdapter+" pairedBtOnly="+pairedBtOnly)
 
     // start thread to listen on BluetoothServerSocket
     if(mSecureAcceptThread == null) {
-      if(D) Log.i(TAG, "start new AcceptThread for secure")
+      if(D) Log.i(TAG, "startBtAcceptThreads new AcceptThread for secure")
       mSecureAcceptThread = new AcceptThread(true)
       if(mSecureAcceptThread != null) 
         mSecureAcceptThread.start
@@ -196,14 +196,14 @@ class RFCommHelperService extends android.app.Service {
 
     if(android.os.Build.VERSION.SDK_INT>=10 && !pairedBtOnly) {
       if(mInsecureAcceptThread == null) {
-        if(D) Log.i(TAG, "start new AcceptThread for insecure (running on 2.3.3+)")
+        if(D) Log.i(TAG, "startBtAcceptThreads new AcceptThread for insecure (running on 2.3.3+)")
         mInsecureAcceptThread = new AcceptThread(false)
         if(mInsecureAcceptThread != null)
           mInsecureAcceptThread.start
       }
     }
 
-    if(D) Log.i(TAG, "start: done")
+    if(D) Log.i(TAG, "startBtAcceptThreads done")
   }
 
   // called by onDestroy() + by activity (on MESSAGE_YOURTURN)
@@ -245,14 +245,16 @@ class RFCommHelperService extends android.app.Service {
 
     connectedRadio = 1 // bt
     state = RFCommHelperService.STATE_CONNECTING
-    if(D) Log.i(TAG, "connectBt remoteAddr="+newRemoteDevice.getAddress+" name=["+newRemoteDevice.getName+"] pairedBtOnly="+pairedBtOnly)
+    if(D) Log.i(TAG, "connectBt remoteAddr="+newRemoteDevice.getAddress+" name=["+newRemoteDevice.getName+"] pairedBtOnly="+pairedBtOnly+" ###############################")
 
     // store target deviceAddr and deviceName to "org.timur.p2pDevices" preferences
     if(newRemoteDevice.getName!=null && newRemoteDevice.getName.length>0) {
       if(prefsSharedP2pBtEditor!=null) {
-        // todo tmtmtm: ONLY if newRemoteDevice.getName in preferences is empty
-        prefsSharedP2pBtEditor.putString(newRemoteDevice.getAddress,newRemoteDevice.getName)
-        prefsSharedP2pBtEditor.commit
+        val existingName = prefsSharedP2pBt.getString(newRemoteDevice.getAddress,null)
+        if(existingName==null || existingName.length==0 || existingName=="nfc-target") {
+          prefsSharedP2pBtEditor.putString(newRemoteDevice.getAddress,newRemoteDevice.getName)
+          prefsSharedP2pBtEditor.commit
+        }
       }
     }
 
@@ -386,6 +388,7 @@ class RFCommHelperService extends android.app.Service {
   class AcceptThread(pairedBt:Boolean=true) extends Thread {
     private var mmServerSocket:BluetoothServerSocket = null
     mmServerSocket = null
+
     try {
       if(pairedBt) {
         mmServerSocket = mBluetoothAdapter.listenUsingRfcommWithServiceRecord(acceptThreadSecureName, UUID.fromString(acceptThreadSecureUuid))
@@ -440,8 +443,11 @@ class RFCommHelperService extends android.app.Service {
           if(prefsSharedP2pBtEditor!=null) {
             val btDevice = btSocket.getRemoteDevice
             if(btDevice.getName!=null && btDevice.getName.length>0) {
-              prefsSharedP2pBtEditor.putString(btDevice.getAddress,btDevice.getName)
-              prefsSharedP2pBtEditor.commit
+              val existingName = prefsSharedP2pBt.getString(btDevice.getAddress,null)
+              if(existingName==null || existingName.length==0 || existingName=="nfc-target") {
+                prefsSharedP2pBtEditor.putString(btDevice.getAddress,btDevice.getName)
+                prefsSharedP2pBtEditor.commit
+              }
             }
           }
 
@@ -507,82 +513,89 @@ class RFCommHelperService extends android.app.Service {
   private class ConnectThreadBt(remoteDevice:BluetoothDevice, reportConnectState:Boolean=true, onstartEnableBackupConnection:Boolean=false) extends Thread {
     private var mmSocket:BluetoothSocket = null
 
-    if(desiredBluetooth) {
-      // Get a BluetoothSocket for a connection with the given BluetoothDevice
-      try {
-        if(pairedBtOnly)
-          mmSocket = remoteDevice.createRfcommSocketToServiceRecord(UUID.fromString(acceptThreadSecureUuid))   // requires pairing
-        else
-          mmSocket = remoteDevice.createInsecureRfcommSocketToServiceRecord(UUID.fromString(acceptThreadInsecureUuid))   // does not require pairing
-      } catch {
-        case e:IOException =>
-          Log.e(TAG, "ConnectThreadBt Socket pairedBtOnly="+pairedBtOnly+" create() failed", e)
-      }
-    }
-
     override def run() {
-      if(D) Log.i(TAG, "ConnectThreadBt run desiredBluetooth="+desiredBluetooth+" pairedBtOnly="+pairedBtOnly+" mmSocket="+mmSocket)
+      if(D) Log.i(TAG, "ConnectThreadBt run desiredBluetooth="+desiredBluetooth+" pairedBtOnly="+pairedBtOnly+" #######################")
       setName("ConnectThreadBt"+pairedBtOnly)
 
-      if(desiredBluetooth && mmSocket!=null) {
+      if(desiredBluetooth) {
         // Always cancel discovery because it will slow down a connection
+        if(D) Log.i(TAG, "ConnectThreadBt run loong sleep before cancelDiscovery ...")
+        try { Thread.sleep(4000) } catch { case ex:Exception => }
+        if(D) Log.i(TAG, "ConnectThreadBt run cancelDiscovery ...")
         mBluetoothAdapter.cancelDiscovery
+        try { Thread.sleep(1000) } catch { case ex:Exception => }
 
         try {
-          // This is a blocking call and will only return on a successful connection or an exception
-          if(D) Log.i(TAG, "ConnectThreadBt run mmSocket.connect()")
-          mmSocket.connect
-          // todo: "java.io.IOException: Service discovery failed" on bt connect!!!
-          //       solution: unpair opposit device
+          if(pairedBtOnly) {
+            if(D) Log.i(TAG, "ConnectThreadBt run createRfcommSocketToServiceRecord(acceptThreadSecureUuid) ############################")
+            mmSocket = remoteDevice.createRfcommSocketToServiceRecord(UUID.fromString(acceptThreadSecureUuid))   // requires pairing
+          } else {
+            if(D) Log.i(TAG, "ConnectThreadBt run createInsecureRfcommSocketToServiceRecord(acceptThreadInsecureUuid) ############################")
+            mmSocket = remoteDevice.createInsecureRfcommSocketToServiceRecord(UUID.fromString(acceptThreadInsecureUuid))   // does not require pairing
+          }
         } catch {
-          case ex:IOException =>
-            if(!pairedBtOnly) {
-              if(D) Log.i(TAG, "ConnectThreadBt run ignore failed insecure connect ...")
-              // ignore exception, try again to connect, but this time secure/paired
-              try {
-                mmSocket.close
-              } catch {
-                case ex:Exception =>
-                  // ignore
-              }
+          case e:IOException =>
+            Log.e(TAG, "ConnectThreadBt Socket pairedBtOnly="+pairedBtOnly+" create() failed", e)
+        }
 
-              try {
-                mmSocket = remoteDevice.createRfcommSocketToServiceRecord(UUID.fromString(acceptThreadSecureUuid))   // requires pairing
-                if(D) Log.i(TAG, "ConnectThreadBt run 2nd attempt secure connect ...")
-                mmSocket.connect
-              } catch {
-                case e: IOException =>
-                  mmSocket = null
-                  Log.e(TAG, "ConnectThreadBt run unable to connect() 2nd attempt pairedBtOnly="+pairedBtOnly,ex)
-                  if(!onstartEnableBackupConnection) {
-                    if(reportConnectState) {
-                      val msg = activityMsgHandler.obtainMessage(RFCommHelperService.CONNECTION_FAILED)
-                      val bundle = new Bundle
-                      bundle.putString(RFCommHelperService.DEVICE_ADDR, remoteDevice.getAddress)
-                      bundle.putString(RFCommHelperService.DEVICE_NAME, remoteDevice.getName)
-                      msg.setData(bundle)
-                      activityMsgHandler.sendMessage(msg)
-                    }
-                    cancel
-                    return
-                  }
-              }
-            } else {
-              Log.e(TAG, "ConnectThreadBt run unable to connect() pairedBtOnly="+pairedBtOnly+" IOException",ex)
-              mmSocket = null
-              if(!onstartEnableBackupConnection) {
-                if(reportConnectState) {
-                  val msg = activityMsgHandler.obtainMessage(RFCommHelperService.CONNECTION_FAILED)
-                  val bundle = new Bundle
-                  bundle.putString(RFCommHelperService.DEVICE_ADDR, remoteDevice.getAddress)
-                  bundle.putString(RFCommHelperService.DEVICE_NAME, remoteDevice.getName)
-                  msg.setData(bundle)
-                  activityMsgHandler.sendMessage(msg)
+        if(mmSocket!=null) {
+          if(D) Log.i(TAG, "ConnectThreadBt run mmSocket.connect(acceptThreadInsecureUuid) ############################")
+          try {
+            // This is a blocking call and will only return on a successful connection or an exception
+            // Get a BluetoothSocket for a connection with the given BluetoothDevice
+            mmSocket.connect
+            // todo: "java.io.IOException: Service discovery failed" on bt connect!!!
+            //       solution: unpair opposit device
+          } catch {
+            case ex:IOException =>
+              if(!pairedBtOnly) {
+                Log.e(TAG, "ConnectThreadBt run ignore failed insecure connect",ex)
+                // ignore exception, try again to connect, but this time secure/paired
+                try {
+                  mmSocket.close
+                } catch {
+                  case ex:Exception =>
+                    // ignore
                 }
-                cancel
-                return
+
+                try {
+                  mmSocket = remoteDevice.createRfcommSocketToServiceRecord(UUID.fromString(acceptThreadSecureUuid))   // requires pairing
+                  if(D) Log.i(TAG, "ConnectThreadBt run 2nd attempt secure connect #########################")
+                  mmSocket.connect
+                } catch {
+                  case e: IOException =>
+                    mmSocket = null
+                    Log.e(TAG, "ConnectThreadBt run unable to connect() 2nd attempt pairedBtOnly="+pairedBtOnly,ex)
+                    if(!onstartEnableBackupConnection) {
+                      if(reportConnectState) {
+                        val msg = activityMsgHandler.obtainMessage(RFCommHelperService.CONNECTION_FAILED)
+                        val bundle = new Bundle
+                        bundle.putString(RFCommHelperService.DEVICE_ADDR, remoteDevice.getAddress)
+                        bundle.putString(RFCommHelperService.DEVICE_NAME, remoteDevice.getName)
+                        msg.setData(bundle)
+                        activityMsgHandler.sendMessage(msg)
+                      }
+                      cancel
+                      return
+                    }
+                }
+              } else {
+                Log.e(TAG, "ConnectThreadBt run unable to connect() pairedBtOnly="+pairedBtOnly+" IOException",ex)
+                mmSocket = null
+                if(!onstartEnableBackupConnection) {
+                  if(reportConnectState) {
+                    val msg = activityMsgHandler.obtainMessage(RFCommHelperService.CONNECTION_FAILED)
+                    val bundle = new Bundle
+                    bundle.putString(RFCommHelperService.DEVICE_ADDR, remoteDevice.getAddress)
+                    bundle.putString(RFCommHelperService.DEVICE_NAME, remoteDevice.getName)
+                    msg.setData(bundle)
+                    activityMsgHandler.sendMessage(msg)
+                  }
+                  cancel
+                  return
+                }
               }
-            }
+          }
         }
       }
 
