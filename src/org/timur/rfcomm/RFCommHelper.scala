@@ -551,7 +551,7 @@ class RFCommHelper(activity:Activity,
               if(D) Log.i(TAG, "onResumeAction wifiP2pManager.discoverPeers failed reasonCode="+reasonCode+" "+reasonString)
             }
             override def onSuccess() {
-              //if(D) Log.i(TAG, "addAllDevices wifiP2pManager.discoverPeers onSuccess")
+              //if(D) Log.i(TAG, "onResumeAction wifiP2pManager.discoverPeers onSuccess")
             }
           })
         }
@@ -1001,6 +1001,7 @@ class RFCommHelper(activity:Activity,
 
     // 1. add all prev connected and stored bt devices
     //if(rfCommService.desiredBluetooth) {
+      // the only reason I disable this condition is so that I can switch off bt + wifi direct and still be able to use these entries to connect via default ip connection
       if(D) Log.i(TAG, "addAllDevices read prefsSharedP2pBt...")
       val p2pBtMap = prefsSharedP2pBt.getAll   // :map[String, ?]
       val p2pBtKeySet = p2pBtMap.keySet
@@ -1020,19 +1021,21 @@ class RFCommHelper(activity:Activity,
     //}
 
     // 2. add all prev connected and stored wifi devices
-    if(D) Log.i(TAG, "addAllDevices read prefsSharedP2pWifi...")
-    val p2pWifiMap = prefsSharedP2pWifi.getAll   // :map[String, ?]
-    val p2pWifiKeySet = p2pWifiMap.keySet
-    val p2pWifiIterator = p2pWifiKeySet.iterator
-    while(p2pWifiIterator.hasNext) {
-      val addr = p2pWifiIterator.next
-      val name = prefsSharedP2pWifi.getString(addr,null)
-      //if(D) Log.i(TAG, "addAllDevices read prefsSharedP2pWifi "+addr+" = "+name)
-      if(name!=null && name.length>0) {
-        if(pairedDevicesShadowHashMap.getOrElse(addr,null)==null) {
-          pairedDevicesShadowHashMap += addr -> name
-          arrayAdapter.add(name+"\n"+addr+" wifi stored")
-          if(D) Log.i(TAG, "addAllDevices prefsSharedP2pWifi name=["+name+"] addr="+addr+" arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size)
+    if(rfCommService.desiredWifiDirect) {
+      if(D) Log.i(TAG, "addAllDevices read prefsSharedP2pWifi...")
+      val p2pWifiMap = prefsSharedP2pWifi.getAll   // :map[String, ?]
+      val p2pWifiKeySet = p2pWifiMap.keySet
+      val p2pWifiIterator = p2pWifiKeySet.iterator
+      while(p2pWifiIterator.hasNext) {
+        val addr = p2pWifiIterator.next
+        val name = prefsSharedP2pWifi.getString(addr,null)
+        //if(D) Log.i(TAG, "addAllDevices read prefsSharedP2pWifi "+addr+" = "+name)
+        if(name!=null && name.length>0) {
+          if(pairedDevicesShadowHashMap.getOrElse(addr,null)==null) {
+            pairedDevicesShadowHashMap += addr -> name
+            arrayAdapter.add(name+"\n"+addr+" wifi stored")
+            if(D) Log.i(TAG, "addAllDevices prefsSharedP2pWifi name=["+name+"] addr="+addr+" arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size)
+          }
         }
       }
     }

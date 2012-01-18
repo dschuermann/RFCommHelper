@@ -277,8 +277,10 @@ class RFCommHelperService extends android.app.Service {
                   onstartEnableBackupConnection:Boolean=false) :Unit = synchronized {
     // todo: onstartEnableBackupConnection not yet being evaluated
     
-    //if(!RFCommHelper.WIFI_DIRECT_SUPPORTED)
-    //  return
+    if(wifiP2pManager==null) {
+      if(D) Log.i(TAG, "connectWifi wifiP2pManager==null abort")
+      return
+    }
 
     // wrong attempt to fix p2pWifi issues
     //p2pChannel = wifiP2pManager.initialize(activity, activity.getMainLooper, null)
@@ -452,27 +454,6 @@ class RFCommHelperService extends android.app.Service {
                 }
               }
             }
-/*
-            if(!pairedBt) {
-              // call IBluetooth.removeBond(btDevice.getAddress)
-              if(D) Log.i(TAG, "AcceptThread ######### pairedBt="+pairedBt+" btDevice.removeBond ############################")
-              val serviceMgrClass = Class.forName("android.os.ServiceManager")
-              val method = serviceMgrClass.getDeclaredMethod("getService", "".asInstanceOf[AnyRef].getClass)
-              val iBinder = method.invoke(null,"bluetooth").asInstanceOf[IBinder]
-              val classArray = Class.forName("android.bluetooth.IBluetooth").getDeclaredClasses
-              val firstClass = classArray(0)    // android.bluetooth.IBluetooth.Stub
-              val method2 = firstClass.getDeclaredMethod("asInterface", classOf[android.os.IBinder])
-              method2.setAccessible(true)
-              val ibt = method2.invoke(null,iBinder) //.asInstanceOf[IBluetooth]
-
-              val bondState = ibt.asInstanceOf[{ def getBondState(macAddr:String) :Int }].getBondState(btDevice.getAddress)
-              if(D) Log.i(TAG, "AcceptThread ######### pairedBt="+pairedBt+" remoteDevice.bondState="+bondState+" ##########################################")
-              //if(bondState < BluetoothDevice.BOND_BONDED) { // if not yet bonded
-                val result = ibt.asInstanceOf[{ def removeBond(macAddr:String) :Boolean }].removeBond(btDevice.getAddress)
-                if(D) Log.i(TAG, "AcceptThread ######### pairedBt="+pairedBt+" btDevice.removeBond result="+result+" ############################")
-              //}
-            }
-*/
           }
 
           // a bt connection is now technically possible and can be accepted
@@ -540,16 +521,16 @@ class RFCommHelperService extends android.app.Service {
     private var connectedPaired = false
 
     override def run() {
-      if(D) Log.i(TAG, "ConnectThreadBt run desiredBluetooth="+desiredBluetooth+" pairedBtOnly="+pairedBtOnly+" #######################")
+      if(D) Log.i(TAG, "ConnectThreadBt run desiredBluetooth="+desiredBluetooth+" pairedBtOnly="+pairedBtOnly)
       setName("ConnectThreadBt"+pairedBtOnly)
 
       if(desiredBluetooth) {
         try {
           if(pairedBtOnly) {
-            if(D) Log.i(TAG, "ConnectThreadBt run createRfcommSocketToServiceRecord(acceptThreadSecureUuid) ############################")
+            if(D) Log.i(TAG, "ConnectThreadBt run createRfcommSocketToServiceRecord(acceptThreadSecureUuid)")
             mmSocket = remoteDevice.createRfcommSocketToServiceRecord(UUID.fromString(acceptThreadSecureUuid))   // requires pairing
           } else {
-            if(D) Log.i(TAG, "ConnectThreadBt run createInsecureRfcommSocketToServiceRecord(acceptThreadInsecureUuid) ############################")
+            if(D) Log.i(TAG, "ConnectThreadBt run createInsecureRfcommSocketToServiceRecord(acceptThreadInsecureUuid)")
             mmSocket = remoteDevice.createInsecureRfcommSocketToServiceRecord(UUID.fromString(acceptThreadInsecureUuid))   // does not require pairing
           }
         } catch {
@@ -559,8 +540,8 @@ class RFCommHelperService extends android.app.Service {
 
         if(mmSocket!=null) {       
           if(!pairedBtOnly) {
-            // call IBluetooth.removeBond(remoteDevice.getAddress)
-            if(D) Log.i(TAG, "ConnectThreadBt run remoteDevice.removeBond ############################")
+            // check bondState
+            if(D) Log.i(TAG, "ConnectThreadBt run check bondState")
             val serviceMgrClass = Class.forName("android.os.ServiceManager")
             val method = serviceMgrClass.getDeclaredMethod("getService", "".asInstanceOf[AnyRef].getClass)
             val iBinder = method.invoke(null,"bluetooth").asInstanceOf[IBinder]
@@ -570,11 +551,12 @@ class RFCommHelperService extends android.app.Service {
             //if(D) Log.i(TAG, "ConnectThreadBt run firstClass="+firstClass)
             val method2 = firstClass.getDeclaredMethod("asInterface", classOf[android.os.IBinder])
             method2.setAccessible(true)
-            val ibt = method2.invoke(null,iBinder) //.asInstanceOf[IBluetooth]
+            val ibt = method2.invoke(null,iBinder)
 
             val bondState = ibt.asInstanceOf[{ def getBondState(macAddr:String) :Int }].getBondState(remoteDevice.getAddress)
-            if(D) Log.i(TAG, "ConnectThreadBt run remoteDevice.bondState="+bondState+" ##########################################")
-            if(bondState < BluetoothDevice.BOND_BONDED) { // if not yet bonded
+            // todo: returns 10 which is < BluetoothDevice.BOND_BONDED, even though it IS bonded
+            if(D) Log.i(TAG, "ConnectThreadBt run remoteDevice.bondState="+bondState+" #############################")
+            if(bondState < BluetoothDevice.BOND_BONDED) { // important: only call removeBond if not yet bonded
               val result = ibt.asInstanceOf[{ def removeBond(macAddr:String) :Boolean }].removeBond(remoteDevice.getAddress)
               if(D) Log.i(TAG, "ConnectThreadBt run remoteDevice.removeBond result="+result+" ############################")
             }
@@ -582,17 +564,14 @@ class RFCommHelperService extends android.app.Service {
 
           // Always cancel discovery because it will slow down a connection
           if(D) Log.i(TAG, "ConnectThreadBt run sleep before cancelDiscovery ...")
-          try { Thread.sleep(500) } catch { case ex:Exception => }
+          try { Thread.sleep(300) } catch { case ex:Exception => }
           if(D) Log.i(TAG, "ConnectThreadBt run cancelDiscovery ...")
           mBluetoothAdapter.cancelDiscovery
-          //try { Thread.sleep(500) } catch { case ex:Exception => }
 
           try {
             // This is a blocking call and will only return on a successful connection or an exception
             // Get a BluetoothSocket for a connection with the given BluetoothDevice
             mmSocket.connect
-              // "java.io.IOException: Service discovery failed" on bt connect!!!
-              //  solution: unbond
             if(!pairedBtOnly)
               connectedUnpaired = true
             else
@@ -601,12 +580,13 @@ class RFCommHelperService extends android.app.Service {
             case ex:IOException =>
               if(!pairedBtOnly) {
                 Log.e(TAG, "ConnectThreadBt run ignore failed insecure connect",ex)
-                // ignore exception, try again to connect, but this time secure/paired
+                // ignore this exception, try to connect again, but this time secure/paired
+
                 try {
                   mmSocket.close
                 } catch {
                   case ex:Exception =>
-                    // ignore
+                    // ignore any exception on socket.close
                 }
 
                 try {
@@ -669,13 +649,13 @@ class RFCommHelperService extends android.app.Service {
       }
       setState(RFCommHelperService.STATE_LISTEN)   // will send MESSAGE_STATE_CHANGE to activity
 
-      //if(connectedUnpaired) {
-      if(!connectedPaired) { 
+      if(connectedUnpaired) {
         new Thread() {
           override def run() {
             try { Thread.sleep(3000) } catch { case ex:Exception => }
-            // call IBluetooth.removeBond(remoteDevice.getAddress)
-            if(D) Log.i(TAG, "ConnectThreadBt cancel remoteDevice.removeBond #############################################")
+
+            // call check bondState
+            if(D) Log.i(TAG, "ConnectThreadBt cancel check bondState")
             val serviceMgrClass = Class.forName("android.os.ServiceManager")
             val method = serviceMgrClass.getDeclaredMethod("getService", "".asInstanceOf[AnyRef].getClass)
             val iBinder = method.invoke(null,"bluetooth").asInstanceOf[IBinder]
@@ -685,9 +665,15 @@ class RFCommHelperService extends android.app.Service {
             //if(D) Log.i(TAG, "ConnectThreadBt cancel firstClass="+firstClass)
             val method2 = firstClass.getDeclaredMethod("asInterface", classOf[android.os.IBinder])
             method2.setAccessible(true)
-            val ibt = method2.invoke(null,iBinder) //.asInstanceOf[IBluetooth]
-            val result = ibt.asInstanceOf[{ def removeBond(macAddr:String) :Boolean }].removeBond(remoteDevice.getAddress)
-            if(D) Log.i(TAG, "ConnectThreadBt cancel remoteDevice.removeBond result="+result+" ############################")
+            val ibt = method2.invoke(null,iBinder)
+
+            val bondState = ibt.asInstanceOf[{ def getBondState(macAddr:String) :Int }].getBondState(remoteDevice.getAddress)
+            // todo: returns 10 which is < BluetoothDevice.BOND_BONDED, even though it IS bonded
+            if(D) Log.i(TAG, "ConnectThreadBt cancel remoteDevice.bondState="+bondState+" ###########################")
+            if(bondState < BluetoothDevice.BOND_BONDED) { // important: only call removeBond if not yet bonded
+              val result = ibt.asInstanceOf[{ def removeBond(macAddr:String) :Boolean }].removeBond(remoteDevice.getAddress)
+              if(D) Log.i(TAG, "ConnectThreadBt cancel remoteDevice.removeBond result="+result+" ############################")
+            }
           }
         }.start
       }
@@ -748,31 +734,10 @@ class RFCommHelperService extends android.app.Service {
           activityMsgHandler.sendMessage(msg)
 
           setState(RFCommHelperService.STATE_LISTEN)   // will send MESSAGE_STATE_CHANGE to activity
-/*
-          new Thread() {
-            override def run() {
-              try { Thread.sleep(3000) } catch { case ex:Exception => }
-              // call IBluetooth.removeBond(remoteDevice.getAddress)
-              if(D) Log.i(TAG, "connectedBt, remoteDevice.removeBond #############################################")
-              val serviceMgrClass = Class.forName("android.os.ServiceManager")
-              val method = serviceMgrClass.getDeclaredMethod("getService", "".asInstanceOf[AnyRef].getClass)
-              val iBinder = method.invoke(null,"bluetooth").asInstanceOf[IBinder]
-              val classArray = Class.forName("android.bluetooth.IBluetooth").getDeclaredClasses
-              //if(D) Log.i(TAG, "ConnectThreadBt cancel classArray="+classArray)
-              val firstClass = classArray(0)    // android.bluetooth.IBluetooth.Stub
-              //if(D) Log.i(TAG, "ConnectThreadBt cancel firstClass="+firstClass)
-              val method2 = firstClass.getDeclaredMethod("asInterface", classOf[android.os.IBinder])
-              method2.setAccessible(true)
-              val ibt = method2.invoke(null,iBinder) //.asInstanceOf[IBluetooth]
-              val result = ibt.asInstanceOf[{ def removeBond(macAddr:String) :Boolean }].removeBond(remoteDevice.getAddress)
-              if(D) Log.i(TAG, "connectedBt, remoteDevice.removeBond result="+result+" ############################")
-            }
-          }.start
-*/          
           if(D) Log.i(TAG, "connectedBt post-ConnectedThread processing done")
         })
 
-        if(D) Log.i(TAG, "connectedBt -> start thread")
+        //if(D) Log.i(TAG, "connectedBt -> start thread")
         setState(RFCommHelperService.STATE_CONNECTED)
         appService.connectedThread.start // -> run() will immediately connect to SocketProxy
         appService.connectedThread.doFirstActor
