@@ -111,7 +111,7 @@ class RFCommHelperService extends android.app.Service {
   var activity:Activity = null            // set by activity on new ServiceConnection()
   var activityMsgHandler:Handler = null   // set by activity on new ServiceConnection()
   var appService:RFServiceTrait = null
-  var connectedRadio:Int = 0              // todo: not happy with this solution
+  var connectedRadio:Int = 0              // todo: not happy with this implementation, better use RFCommHelper.RADIO_xxxxx flags
   val wifiP2pDeviceArrayList = new ArrayList[WifiP2pDevice]()
   var discoveringPeersInProgress = false  // so we do not call discoverPeers() again while it is active still
   var isWifiP2pEnabled = false            // if false in onResume, we will offer ACTION_WIRELESS_SETTINGS 
@@ -160,18 +160,14 @@ class RFCommHelperService extends android.app.Service {
   override def onBind(intent:Intent) :IBinder = localBinder 
 
   override def onCreate() {
-    if(D) Log.i(TAG, "onCreate")
-    // note: our service is started via bindService() from RFCommHelper constructor (from activity onCreate())
-    //       but it is not yet clear wether "bt new AcceptThread" is needed
-    //       when it is clear this is wanted, activity will call start() from onResume()
+    //if(D) Log.i(TAG, "onCreate")
   }
 
   // called by Activity onResume() 
-  // but only while state == STATE_NONE
+  // but only if state == STATE_NONE
   // this is why we quickly switch state to STATE_LISTEN
   def startBtAcceptThreads() = synchronized {
     if(D) Log.i(TAG, "startBtAcceptThreads android.os.Build.VERSION.SDK_INT="+android.os.Build.VERSION.SDK_INT+" pairedBtOnly="+pairedBtOnly+" activityResumed="+activityResumed)
-
     // in case bt was turned on _after_ app start
     if(myBtAddr==null) {
       myBtAddr = mBluetoothAdapter.getAddress
@@ -245,7 +241,7 @@ class RFCommHelperService extends android.app.Service {
 
     connectedRadio = 1 // bt
     state = RFCommHelperService.STATE_CONNECTING
-    if(D) Log.i(TAG, "connectBt remoteAddr="+newRemoteDevice.getAddress+" name=["+newRemoteDevice.getName+"] pairedBtOnly="+pairedBtOnly+" ###############################")
+    if(D) Log.i(TAG, "connectBt remoteAddr="+newRemoteDevice.getAddress+" name=["+newRemoteDevice.getName+"] pairedBtOnly="+pairedBtOnly)
 
     // store target deviceAddr and deviceName to "org.timur.p2pDevices" preferences
     if(newRemoteDevice.getName!=null && newRemoteDevice.getName.length>0) {
@@ -399,7 +395,7 @@ class RFCommHelperService extends android.app.Service {
           mmServerSocket = mBluetoothAdapter.listenUsingInsecureRfcommWithServiceRecord(acceptThreadInsecureName, UUID.fromString(acceptThreadInsecureUuid))
         } catch {
           case nsmerr: java.lang.NoSuchMethodError =>
-            // this should really not happen, because we run the insecure method only if os >= 2.3.3
+            // this should really not happen, because we run the insecure method only if os>=2.3.3/level=10 (now we use insecure only in ICS/level 14)
             Log.e(TAG, "AcceptThread pairedBt="+pairedBt+" listenUsingInsecureRfcommWithServiceRecord failed", nsmerr)
         }
       }
@@ -410,36 +406,36 @@ class RFCommHelperService extends android.app.Service {
 
     override def run() {
       if(mmServerSocket==null) {
-        Log.e(TAG, "AcceptThread ######### pairedBt="+pairedBt+" run mmServerSocket==null")
+        Log.e(TAG, "AcceptThread pairedBt="+pairedBt+" run mmServerSocket==null")
         return
       }
 
-      if(D) Log.i(TAG, "AcceptThread ######### pairedBt="+pairedBt+" run mmServerSocket="+mmServerSocket)
+      if(D) Log.i(TAG, "AcceptThread pairedBt="+pairedBt+" run mmServerSocket="+mmServerSocket)
       setName("AcceptThread"+pairedBtOnly)
       var btSocket:BluetoothSocket = null
 
       // Listen to the server socket if we're not connected
       while(mmServerSocket!=null) {
-        if(D) Log.i(TAG, "AcceptThread ######### pairedBt="+pairedBt+" run loop mmServerSocket="+mmServerSocket)
+        if(D) Log.i(TAG, "AcceptThread pairedBt="+pairedBt+" run loop mmServerSocket="+mmServerSocket)
         try {
           synchronized {
             btSocket = null
             if(mmServerSocket!=null) {
               // This is a blocking call and will only return on a successful connection or an exception
               btSocket = mmServerSocket.accept
-              if(D) Log.i(TAG, "AcceptThread ######### pairedBt="+pairedBt+" run loop after accept, btSocket="+btSocket)
+              if(D) Log.i(TAG, "AcceptThread pairedBt="+pairedBt+" run loop after accept, btSocket="+btSocket)
             }
           }
         } catch {
           case ioex: IOException =>
             // log exception only if not stopped
             if(state != RFCommHelperService.STATE_NONE)
-              Log.e(TAG, "AcceptThread ######### pairedBt="+pairedBt+" run state="+state+" ioex="+ioex)
+              Log.e(TAG, "AcceptThread pairedBt="+pairedBt+" run state="+state+" ioex="+ioex)
         }
 
-        if(D) Log.i(TAG, "AcceptThread ######### pairedBt="+pairedBt+" btSocket="+btSocket+" activityResumed="+activityResumed)
+        if(D) Log.i(TAG, "AcceptThread pairedBt="+pairedBt+" btSocket="+btSocket+" activityResumed="+activityResumed)
         if(btSocket==null) {
-          Log.e(TAG, "AcceptThread ######### pairedBt="+pairedBt+" btSocket==null")
+          Log.e(TAG, "AcceptThread pairedBt="+pairedBt+" btSocket==null")
 
         } else {
           // btSocket!=null, store the deviceAddr and deviceName of the calling bt device
@@ -460,8 +456,7 @@ class RFCommHelperService extends android.app.Service {
           // note: this is where we can decide to deny based on activityResumed==false
           if(!activityResumed) {
             // our activity is currently paused
-            if(D) Log.i(TAG, "AcceptThread ######### pairedBt="+pairedBt+" Denying incoming connect request, activityResumed="+activityResumed+" activity="+activity+" ###########################")
-            // hangup
+            if(D) Log.i(TAG, "AcceptThread pairedBt="+pairedBt+" Denying incoming connect request, activityResumed="+activityResumed+" activity="+activity)
             btSocket.close
 
             if(activity!=null) {
@@ -472,7 +467,7 @@ class RFCommHelperService extends android.app.Service {
 
           } else {
             // activity is not paused
-            if(D) Log.i(TAG, "AcceptThread ######### pairedBt="+pairedBt+" -> connectedBt()")
+            if(D) Log.i(TAG, "AcceptThread pairedBt="+pairedBt+" -> connectedBt()")
             RFCommHelperService.this synchronized {
               connectedBt(btSocket, btDevice)
             }
@@ -484,11 +479,11 @@ class RFCommHelperService extends android.app.Service {
       }
 
       // mmServerSocket was set to null
-      if(D) Log.i(TAG, "AcceptThread ######### pairedBt="+pairedBt+" end pairedBtOnly="+pairedBtOnly)
+      if(D) Log.i(TAG, "AcceptThread pairedBt="+pairedBt+" end pairedBtOnly="+pairedBtOnly)
     }
 
     def cancel() { 
-      if(D) Log.i(TAG, "AcceptThread ######### pairedBt="+pairedBt+" cancel() mmServerSocket="+mmServerSocket)
+      if(D) Log.i(TAG, "AcceptThread pairedBt="+pairedBt+" cancel() mmServerSocket="+mmServerSocket)
       if(mmServerSocket!=null) {
         try {
           setState(RFCommHelperService.STATE_NONE)   // so that run() will NOT log an error; will send MESSAGE_STATE_CHANGE
@@ -496,7 +491,7 @@ class RFCommHelperService extends android.app.Service {
           mmServerSocket=null
         } catch {
           case ex: IOException =>
-            Log.e(TAG, "AcceptThread ######### pairedBt="+pairedBt+" cancel() mmServerSocket="+mmServerSocket+" ex=",ex)
+            Log.e(TAG, "AcceptThread pairedBt="+pairedBt+" cancel() mmServerSocket="+mmServerSocket+" ex=",ex)
         }
       }
     }
@@ -554,7 +549,7 @@ class RFCommHelperService extends android.app.Service {
             val ibt = method2.invoke(null,iBinder)
 
             val bondState = ibt.asInstanceOf[{ def getBondState(macAddr:String) :Int }].getBondState(remoteDevice.getAddress)
-            // todo: returns 10 which is < BluetoothDevice.BOND_BONDED, even though it IS bonded
+            // todo: andr-bug: returns 10 which is < BluetoothDevice.BOND_BONDED, even though it IS 'secretly' bonded
             if(D) Log.i(TAG, "ConnectThreadBt run remoteDevice.bondState="+bondState+" #############################")
             if(bondState < BluetoothDevice.BOND_BONDED) { // important: only call removeBond if not yet bonded
               val result = ibt.asInstanceOf[{ def removeBond(macAddr:String) :Boolean }].removeBond(remoteDevice.getAddress)
@@ -981,7 +976,7 @@ class RFCommHelperService extends android.app.Service {
           }
         }
 
-        val port = ipPort //8954  // our personal rfcomm ip-port
+        val port = ipPort // our app-specific rfcomm ip-port
         if(isHost) {
           // which device becomes the isGroupOwner is random, but it will be the device we run our serversocket on...
           // by convention, we make the GroupOwner (using the serverSocket) also the filetransfer-non-actor
@@ -1027,8 +1022,6 @@ class RFCommHelperService extends android.app.Service {
 
 
   def newWiFiDirectBroadcastReceiver() :WiFiDirectBroadcastReceiver = {
-    //if(!RFCommHelper.WIFI_DIRECT_SUPPORTED)
-    //  return null
     return new WiFiDirectBroadcastReceiver()
   }
 

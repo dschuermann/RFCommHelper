@@ -33,8 +33,6 @@ import java.io.InputStreamReader
 import java.util.ArrayList
 import java.util.Date
 
-import scala.collection.mutable // using mutable.HashMap
-
 import android.util.Log
 import android.content.Context
 import android.content.Intent
@@ -481,6 +479,7 @@ class RFCommHelper(activity:Activity,
   }
 
 /*
+  // strange p2pWifi error callback
   def wifiP2pChannelListener = new WifiP2pManager.ChannelListener() {
     def onChannelDisconnected() {
       if(rfCommService.wifiP2pManager!=null && !retryChannel) {
@@ -673,7 +672,7 @@ class RFCommHelper(activity:Activity,
     if(D) Log.i(TAG, "onResume mNfcAdapter="+rfCommService.mNfcAdapter+" wifiP2pManager="+rfCommService.wifiP2pManager+" isWifiP2pEnabled="+rfCommService.isWifiP2pEnabled)
 
     if(rfCommService==null) {
-      Log.e(TAG, "onResume rfCommService==null abort ##################")
+      Log.e(TAG, "onResume rfCommService==null abort")
       return
     }
 
@@ -739,6 +738,7 @@ class RFCommHelper(activity:Activity,
     if(rfCommService.wifiP2pManager!=null && rfCommService.p2pChannel!=null) {
       if(D) Log.i(TAG, "onDestroy wifiP2pManager.removeGroup = shutdown SKIP")
 /*
+      // not sure if this is needed
       rfCommService.wifiP2pManager.removeGroup(rfCommService.p2pChannel, new ActionListener() {
         override def onSuccess() {
           if(D) Log.i(TAG, "onDestroy wifiP2pManager.removeGroup() success")
@@ -751,10 +751,6 @@ class RFCommHelper(activity:Activity,
       })
 */
       if(wifiDirectBroadcastReceiver!=null) {
-/*
-        // wait here for removeGroup response, before we unregister wifiDirectBroadcastReceiver
-        try { Thread.sleep(300) } catch { case ex:Exception => }    // wait to get into onResume state after NDEF_DISCOVERED
-*/
         if(D) Log.i(TAG, "onDestroy unregisterReceiver(wifiDirectBroadcastReceiver)")
         activity.unregisterReceiver(wifiDirectBroadcastReceiver)
         wifiDirectBroadcastReceiver = null
@@ -965,10 +961,11 @@ class RFCommHelper(activity:Activity,
       // -> onActivityResult/REQUEST_ENABLE_BT -> if(resultCode == Activity.RESULT_OK) nfcServiceSetup()
       // todo: onexit: offer to disable BT
 */
+      // programatically enable bluetooth
       if(D) Log.i(TAG, "switchOnDesiredRadios auto-enable bt")
       mBluetoothAdapter.enable // this may take some time
       autoEnabledBt = true // so we don't forget to switch it off on exit
-      // todo tmtmtm: urgently need a busy bee ("switching on bluetooth...")
+      // todo tmtmtm: really need a busy bee ("switching on bluetooth...")
       AndrTools.runOnUiThread(activity) { () =>
         Toast.makeText(activity, "Switching on Bluetooth", Toast.LENGTH_SHORT).show
       }
@@ -988,7 +985,7 @@ class RFCommHelper(activity:Activity,
   }
 
   ////////////////////////////////////////////////////////////////////////////////////////////////
-  private var pairedDevicesShadowHashMap:mutable.HashMap[String,String] = null
+  private var pairedDevicesShadowHashMap:scala.collection.mutable.HashMap[String,String] = null
   private var btBroadcastReceiver:BroadcastReceiver = null
   private var arrayAdapter:ArrayAdapter[String] = null
 
@@ -996,7 +993,7 @@ class RFCommHelper(activity:Activity,
     arrayAdapter = setArrayAdapter
     // now fill our listView with all possible (paired/stored/discovered) devices of the requested device types
     // we use pairedDevicesShadowHashMap[addr,name] as a shadow-HashMap containing all listed devices, so we can prevent double-entries in the visible arrayAdapter
-    pairedDevicesShadowHashMap = new mutable.HashMap[String,String]()
+    pairedDevicesShadowHashMap = new scala.collection.mutable.HashMap[String,String]()
     if(D) Log.i(TAG, "addAllDevices fill listView with all devices, arrayAdapter.getCount="+arrayAdapter.getCount+" "+pairedDevicesShadowHashMap.size)
 
     // 1. add all prev connected and stored bt devices
