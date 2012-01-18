@@ -128,7 +128,7 @@ class RFCommHelperService extends android.app.Service {
   var activityRuntimeClass:java.lang.Class[Activity] = null  // needed for nfcPendingIntent only
   var nfcForegroundPushMessage:NdefMessage = null
   var desiredBluetooth = false
-  var pairedBtOnly = false // support insecure bt if set false, false value only evaluated for sdk>=10 (2.3.3+)
+  var pairedBtOnly = false // support insecure bt if set false, false value only evaluated for sdk>=14 (4.0+)
   var desiredWifiDirect = false
   var desiredNfc = false
   var prefsSharedP2pBt:SharedPreferences = null
@@ -191,7 +191,7 @@ class RFCommHelperService extends android.app.Service {
 
     if(android.os.Build.VERSION.SDK_INT>=10 && !pairedBtOnly) {
       if(mInsecureAcceptThread == null) {
-        if(D) Log.i(TAG, "startBtAcceptThreads new AcceptThread for insecure (running on 2.3.3+)")
+        if(D) Log.i(TAG, "startBtAcceptThreads new AcceptThread for insecure (running on 4.0+)")
         mInsecureAcceptThread = new AcceptThread(false)
         if(mInsecureAcceptThread != null)
           mInsecureAcceptThread.start
@@ -395,7 +395,7 @@ class RFCommHelperService extends android.app.Service {
           mmServerSocket = mBluetoothAdapter.listenUsingInsecureRfcommWithServiceRecord(acceptThreadInsecureName, UUID.fromString(acceptThreadInsecureUuid))
         } catch {
           case nsmerr: java.lang.NoSuchMethodError =>
-            // this should really not happen, because we run the insecure method only if os>=2.3.3/level=10 (now we use insecure only in ICS/level 14)
+            // this should really not happen, because we run the insecure method only if os>=4.0/level=14
             Log.e(TAG, "AcceptThread pairedBt="+pairedBt+" listenUsingInsecureRfcommWithServiceRecord failed", nsmerr)
         }
       }
