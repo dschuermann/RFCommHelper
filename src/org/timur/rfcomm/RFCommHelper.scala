@@ -217,14 +217,19 @@ class RFCommHelper(activity:Activity,
           rfCommService.desiredBluetooth = prefsPrivate.getBoolean("radioBluetooth", true)
           if(D) Log.i(TAG, "constructor rfCommServiceConnection onServiceConnected rfCommService.desiredBluetooth="+rfCommService.desiredBluetooth)
         }
+
         if((radioTypeWanted & RFCommHelper.RADIO_P2PWIFI)!=0)
           rfCommService.desiredWifiDirect = prefsPrivate.getBoolean("radioWifiDirect", true)
+
         if((radioTypeWanted & RFCommHelper.RADIO_NFC)!=0)
           rfCommService.desiredNfc = prefsPrivate.getBoolean("radioNfc", true)         
+
         rfCommService.pairedBtOnly = prefsPrivate.getBoolean("pairedBtOnly", false)
       }
 
       // rfCommService is initialized
+      if(allOK!=null)
+        allOK()   // activity will set current resume state, required for onResumeAction
 
       // we need to call our onResumeAction method ourselfs now, because the original 1st onResume was not able to call us, because this service was not yet loaded then
       if(D) Log.i(TAG, "constructor rfCommServiceConnection onServiceConnected activityResumed="+rfCommService.activityResumed+" -> onResume")
@@ -232,8 +237,6 @@ class RFCommHelper(activity:Activity,
         override def run() {
           onResumeAction(false)  // this will run radioSelect and start the AcceptThread(s)
           if(D) Log.i(TAG, "constructor rfCommServiceConnection onServiceConnected post onResumeAction -> allOK")
-          if(allOK!=null)
-            allOK()
         }
       }.start                        
     } 
@@ -272,12 +275,15 @@ class RFCommHelper(activity:Activity,
   }
 
   private def initBt() {
+    if(D) Log.i(TAG, "initBt rfCommService="+rfCommService)
     if(rfCommService!=null) {
+      if(D) Log.i(TAG, "initBt rfCommService.desiredBluetooth="+rfCommService.desiredBluetooth+" mBluetoothAdapter="+mBluetoothAdapter)
       if(rfCommService.desiredBluetooth && mBluetoothAdapter!=null && mBluetoothAdapter.isEnabled) {
-        // start bluetooth accept thread
         // stop any old bluetooth accept threads
+        if(D) Log.i(TAG, "initBt rfCommService.stopAcceptThreads")
         rfCommService.stopAcceptThreads
 
+        // start bluetooth accept thread
         if(D) Log.i(TAG, "initBt rfCommService.start pairedBtOnly="+rfCommService.pairedBtOnly+" ...")
         rfCommService.startBtAcceptThreads // -> bt (new AcceptThread()).start -> run()
       }
@@ -338,7 +344,7 @@ class RFCommHelper(activity:Activity,
     val radioPairlessBtCheckbox = new CheckBox(activity)
     radioPairlessBtCheckbox.setText("Pairless Bluetooth")
     radioPairlessBtCheckbox.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP,19.0f)
-    if(android.os.Build.VERSION.SDK_INT<10) {
+    if(android.os.Build.VERSION.SDK_INT<14) {
       radioPairlessBtCheckbox.setEnabled(false)
       radioPairlessBtCheckbox.setChecked(false)
     } else {
@@ -961,8 +967,12 @@ class RFCommHelper(activity:Activity,
 */
       if(D) Log.i(TAG, "switchOnDesiredRadios auto-enable bt")
       mBluetoothAdapter.enable // this may take some time
-      var waitMS = 6000
       autoEnabledBt = true // so we don't forget to switch it off on exit
+      // todo tmtmtm: urgently need a busy bee ("switching on bluetooth...")
+      AndrTools.runOnUiThread(activity) { () =>
+        Toast.makeText(activity, "Switching on Bluetooth", Toast.LENGTH_SHORT).show
+      }
+      var waitMS = 8000
       while(!mBluetoothAdapter.isEnabled && waitMS>0) {
         if(D) Log.i(TAG, "switchOnDesiredRadios mBluetoothAdapter.isEnabled="+mBluetoothAdapter.isEnabled)
         try { Thread.sleep(500) } catch { case ex:Exception => }
