@@ -127,8 +127,8 @@ class RFCommHelper(activity:Activity,
                    prefsPrivate:SharedPreferences, 
                    prefsSharedP2pBt:SharedPreferences,
                    prefsSharedP2pWifi:SharedPreferences,
-                   allOK:() => Unit, 
-                   allFailed:() => Unit, 
+                   serviceInitializedFkt:() => Unit, 
+                   serviceFailedFkt:() => Unit, 
                    appService:RFServiceTrait,
                    activityRuntimeClass:java.lang.Class[Activity],
                    mediaConfirmSound:MediaPlayer,
@@ -152,6 +152,7 @@ class RFCommHelper(activity:Activity,
   private var wifiDirectBroadcastReceiver:BroadcastReceiver = null
   private var autoEnabledBt = false
   private var retryChannel = false
+  @volatile private var activityResumed = false
 
   private val intentFilter = new IntentFilter()
   if(android.os.Build.VERSION.SDK_INT>=14) {
@@ -161,7 +162,7 @@ class RFCommHelper(activity:Activity,
     intentFilter.addAction(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION)
   }
 
-  if(D) Log.i(TAG, "constructor startService('RFCommHelperService') ...")
+  if(D) Log.i(TAG, "constructor startService('RFCommHelperService')")
   val serviceIntent = new Intent(activity, classOf[RFCommHelperService])
   //startService(serviceIntent)   // call this only, to keep service active after onDestroy()/unbindService()
 
@@ -169,8 +170,8 @@ class RFCommHelper(activity:Activity,
     def onServiceDisconnected(className:ComponentName) { 
       if(D) Log.i(TAG, "constructor rfCommServiceConnection onServiceDisconnected set rfCommService=null")
       rfCommService = null
-      if(allFailed!=null)
-        allFailed()
+      if(serviceFailedFkt!=null)
+        serviceFailedFkt()
     } 
     def onServiceConnected(className:ComponentName, rawBinder:IBinder) { 
       if(D) Log.i(TAG, "constructor rfCommServiceConnection onServiceConnected localBinder.getService ...")
@@ -189,7 +190,7 @@ class RFCommHelper(activity:Activity,
 
       // got connected to rfCommService
 
-      if(D) Log.i(TAG, "constructor rfCommServiceConnection onServiceConnected got rfCommService object, activity="+activity)
+      if(D) Log.i(TAG, "constructor rfCommServiceConnection onServiceConnected got rfCommService object, activity="+activity+" activityResumed="+activityResumed)
       rfCommService.activity = activity
       rfCommService.activityRuntimeClass = activityRuntimeClass   // needed for nfcPendingIntent only
       rfCommService.appService = appService                       // createConnectedThread, connectedThread.start, etc.
@@ -204,6 +205,7 @@ class RFCommHelper(activity:Activity,
       rfCommService.acceptThreadInsecureUuid = acceptThreadInsecureUuid
       rfCommService.ipPort = ipPort
       rfCommService.appName = appName
+      rfCommService.activityResumed = activityResumed
 
       if(D) Log.i(TAG, "constructor rfCommServiceConnection onServiceConnected prefsPrivate="+prefsPrivate+" radioTypeWanted & RFCommHelper.RADIO_BT="+(radioTypeWanted & RFCommHelper.RADIO_BT))
       if(prefsPrivate!=null) {
@@ -226,15 +228,15 @@ class RFCommHelper(activity:Activity,
       }
 
       // rfCommService is initialized
-      if(allOK!=null)
-        allOK()   // activity will set current resume state, required for onResumeAction
+      if(serviceInitializedFkt!=null)
+        serviceInitializedFkt()
 
       // we need to call our onResumeAction method ourselfs now, because the original 1st onResume was not able to call us, because this service was not yet loaded then
       if(D) Log.i(TAG, "constructor rfCommServiceConnection onServiceConnected activityResumed="+rfCommService.activityResumed+" -> onResume")
       new Thread() {
         override def run() {
           onResumeAction(false)  // this will run radioSelect and start the AcceptThread(s)
-          if(D) Log.i(TAG, "constructor rfCommServiceConnection onServiceConnected post onResumeAction -> allOK")
+          if(D) Log.i(TAG, "constructor rfCommServiceConnection onServiceConnected post onResumeAction -> serviceInitializedFkt")
         }
       }.start                        
     } 
@@ -246,8 +248,12 @@ class RFCommHelper(activity:Activity,
     radioDialogPossibleAndNotYetShown = true // will be evaluated in onResume
   } else {
     Log.e(TAG, "constructor bindService failed")
-    if(allFailed!=null)
-      allFailed()
+    if(serviceFailedFkt!=null)
+      serviceFailedFkt()
+  }
+
+  def setActivityResumed(state:Boolean) {
+    activityResumed = state
   }
 
   def stopActiveConnection() {
@@ -670,15 +676,12 @@ class RFCommHelper(activity:Activity,
 
   def onResume() {
     if(D) Log.i(TAG, "onResume mNfcAdapter="+rfCommService.mNfcAdapter+" wifiP2pManager="+rfCommService.wifiP2pManager+" isWifiP2pEnabled="+rfCommService.isWifiP2pEnabled)
-
     if(rfCommService==null) {
-      Log.e(TAG, "onResume rfCommService==null abort")
+      activityResumed = true  // only so we can report the current resumed state to rfCommService when it has initialized
       return
     }
 
     rfCommService.activityResumed = true
-    if(D) Log.i(TAG, "onResume set rfCommService.activityResumed=true -> onResumeAction()")
-    
     onResumeAction(true)
   }
 
@@ -689,12 +692,11 @@ class RFCommHelper(activity:Activity,
     //              rfcommservice will NOT be able to answer an incoming bt-connect-request   
 
     if(rfCommService==null) {
-      Log.e(TAG, "onPause rfCommService==null, abort ##################")
+      activityResumed = false  // only so we can report the current resumed state to rfCommService when it has initialized
       return
     }
 
     rfCommService.activityResumed = false
-
     if(rfCommService.mNfcAdapter!=null && rfCommService.mNfcAdapter.isEnabled) {
       try {
         rfCommService.mNfcAdapter.disableForegroundDispatch(activity)
