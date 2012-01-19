@@ -576,7 +576,7 @@ class RFCommHelper(activity:Activity,
         // however, we need to wait a little for wifiDirectBroadcastReceiver to call our setIsWifiP2pEnabled() method, so we know if isWifiP2pEnabled is true
         // if isWifiP2pEnabled is true, we might not need to show the radio-select dialog
         if(D) Log.i(TAG, "onResumeAction little sleep to find out about the state of isWifiP2pEnabled="+rfCommService.isWifiP2pEnabled)
-        try { Thread.sleep(300) } catch { case ex:Exception => }
+        try { Thread.sleep(400) } catch { case ex:Exception => }
         if(D) Log.i(TAG, "onResumeAction little sleep to find out about the state of isWifiP2pEnabled="+rfCommService.isWifiP2pEnabled+" DONE ##############")
       }
 

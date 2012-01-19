@@ -1040,12 +1040,14 @@ class RFCommHelperService extends android.app.Service {
           // Wifi Direct mode is enabled
           //if(D) Log.i(TAG, "WifiP2pEnabled true ####")
           isWifiP2pEnabled=true
-
+          
         } else {
           //if(D) Log.i(TAG, "WifiP2pEnabled false ####")
           p2pConnected = false
           isWifiP2pEnabled=false
         }
+        // call mainViewUpdate to update the radio icons shown
+        activityMsgHandler.obtainMessage(RFCommHelperService.UI_UPDATE, -1, -1, null).sendToTarget
 
       } else if(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION == action) {                 // our device now has a p2pWifi mac-addr (or has lost it)
         val wifiP2pDevice = intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_DEVICE).asInstanceOf[WifiP2pDevice]
