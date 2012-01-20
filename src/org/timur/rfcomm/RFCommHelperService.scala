@@ -202,22 +202,29 @@ class RFCommHelperService extends android.app.Service {
     if(D) Log.i(TAG, "startBtAcceptThreads done")
   }
 
-  // called by onDestroy() + by activity (on MESSAGE_YOURTURN)
-  def stopActiveConnection() = synchronized {
+  // called by onDestroy() + by activity
+  def stopActiveConnection() {
     if(D) Log.i(TAG, "stopActiveConnection mConnectThread="+mConnectThread)
-    if(mConnectThread != null) {
-      // disconnect in case we were the connect initiator
-      mConnectThread.cancel
-      mConnectThread = null
+    // we do this in a separate thread, in order to prevent android.os.NetworkOnMainThreadException
+    if(mConnectThread!=null || (appService!=null && appService.connectedThread!=null)) {
+      new Thread() {
+        override def run() {
+          if(mConnectThread != null) {
+            // disconnect in case we were the connect initiator
+            mConnectThread.cancel
+            mConnectThread = null
+          }
+          if(appService!=null && appService.connectedThread!=null) {
+            // disconnect in case we were the connect responder
+            if(D) Log.i(TAG, "stopActiveConnection connectedThread="+appService.connectedThread)
+            appService.connectedThread.cancel
+            appService.connectedThread = null
+          }
+          setState(RFCommHelperService.STATE_LISTEN)   // will send MESSAGE_STATE_CHANGE to activity
+          if(D) Log.i(TAG, "stopActiveConnection done")
+        }
+      }.start
     }
-    if(appService!=null && appService.connectedThread!=null) {
-      // disconnect in case we were the connect responder
-      if(D) Log.i(TAG, "stopActiveConnection connectedThread="+appService.connectedThread)
-      appService.connectedThread.cancel
-      appService.connectedThread = null
-    }
-    setState(RFCommHelperService.STATE_LISTEN)   // will send MESSAGE_STATE_CHANGE to activity
-    if(D) Log.i(TAG, "stopActiveConnection done")
   }
 
   def stopAcceptThreads() = synchronized {
