@@ -204,7 +204,11 @@ class RFCommHelperService extends android.app.Service {
 
   // called by onDestroy() + by activity
   def stopActiveConnection() {
-    if(D) Log.i(TAG, "stopActiveConnection mConnectThread="+mConnectThread)
+    if(appService==null)
+      if(D) Log.i(TAG, "stopActiveConnection mConnectThread="+mConnectThread+" appService==null")
+    else
+      if(D) Log.i(TAG, "stopActiveConnection mConnectThread="+mConnectThread+" appService.connectedThread="+appService.connectedThread)
+
     // we do this in a separate thread, in order to prevent android.os.NetworkOnMainThreadException
     if(mConnectThread!=null || (appService!=null && appService.connectedThread!=null)) {
       new Thread() {
@@ -216,7 +220,7 @@ class RFCommHelperService extends android.app.Service {
           }
           if(appService!=null && appService.connectedThread!=null) {
             // disconnect in case we were the connect responder
-            if(D) Log.i(TAG, "stopActiveConnection connectedThread="+appService.connectedThread)
+            if(D) Log.i(TAG, "stopActiveConnection appService.connectedThread="+appService.connectedThread)
             appService.connectedThread.cancel
             appService.connectedThread = null
           }
@@ -224,6 +228,9 @@ class RFCommHelperService extends android.app.Service {
           if(D) Log.i(TAG, "stopActiveConnection done")
         }
       }.start
+    } else {
+      setState(RFCommHelperService.STATE_LISTEN)   // will send MESSAGE_STATE_CHANGE to activity
+      if(D) Log.i(TAG, "stopActiveConnection setState STATE_LISTEN only")
     }
   }
 
@@ -308,7 +315,10 @@ class RFCommHelperService extends android.app.Service {
       if(D) Log.i(TAG, "connectWifi local="+localP2pWifiAddr+" < remote="+p2pWifiAddr+" - stay passive - let other device connect() ############")
 
     } else {
-      if(D) Log.i(TAG, "connectWifi active connect() local="+localP2pWifiAddr+" > remote="+p2pWifiAddr+" ############")
+      if(onlyIfLocalAddrBiggerThatRemote)
+        if(D) Log.i(TAG, "connectWifi active connect() local="+localP2pWifiAddr+" > remote="+p2pWifiAddr+" ############")
+      else
+        if(D) Log.i(TAG, "connectWifi active connect() local="+localP2pWifiAddr+" to remote="+p2pWifiAddr+" ############")
       val wifiP2pConfig = new WifiP2pConfig()
       wifiP2pConfig.groupOwnerIntent = -1
       wifiP2pConfig.wps.setup = WpsInfo.PBC
