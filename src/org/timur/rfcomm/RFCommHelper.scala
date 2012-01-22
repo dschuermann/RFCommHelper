@@ -716,13 +716,16 @@ class RFCommHelper(activity:Activity,
         if(D) Log.i(TAG, "onDestroy appService.stopActiveConnection ...")
         rfCommService.appService.stopActiveConnection
       }
-      rfCommService.stopActiveConnection
+
       if(D) Log.i(TAG, "onDestroy rfCommService.stopAcceptThreads ...")
       rfCommService.stopAcceptThreads
+
+      if(D) Log.i(TAG, "onDestroy addAllDevicesUnregister ...")
       addAllDevicesUnregister
       rfCommService.activity = null
+
     } else {
-      Log.e(TAG, "onDestroy rfCommService=null cannot call stopActiveConnection")
+      Log.e(TAG, "onDestroy rfCommService=null cannot call stopActiveConnection/stopAcceptThreads/addAllDevicesUnregister")
     }
     
     if(autoEnabledBt && mBluetoothAdapter!=null && mBluetoothAdapter.isEnabled) {
@@ -738,28 +741,16 @@ class RFCommHelper(activity:Activity,
     }
 
     if(rfCommService.wifiP2pManager!=null && rfCommService.p2pChannel!=null) {
-      if(D) Log.i(TAG, "onDestroy wifiP2pManager.removeGroup = shutdown SKIP")
-/*
-      // not sure if this is needed
-      rfCommService.wifiP2pManager.removeGroup(rfCommService.p2pChannel, new ActionListener() {
-        override def onSuccess() {
-          if(D) Log.i(TAG, "onDestroy wifiP2pManager.removeGroup() success")
-        }
-        override def onFailure(reason:Int) {
-          // todo: for some reason we always get reason=2 here
-          Log.e(TAG, "onDestroy wifiP2pManager.removeGroup() failed reason="+reason+" ###############################")
-          // reason ERROR=0, P2P_UNSUPPORTED=1, BUSY=2
-        }
-      })
-*/
+      if(D) Log.i(TAG, "onDestroy wifiP2pManager.removeGroup")
+      // we don't care for the removeGroup() result, it's all over
+      rfCommService.wifiP2pManager.removeGroup(rfCommService.p2pChannel, null)
+
       if(wifiDirectBroadcastReceiver!=null) {
         if(D) Log.i(TAG, "onDestroy unregisterReceiver(wifiDirectBroadcastReceiver)")
         activity.unregisterReceiver(wifiDirectBroadcastReceiver)
         wifiDirectBroadcastReceiver = null
       }
       rfCommService.p2pConnected = false  // maybe not necessary
-      //p2pChannel = null
-      //rfCommService.wifiP2pManager = null
     }
 
     activityDestroyed=true
@@ -838,7 +829,13 @@ class RFCommHelper(activity:Activity,
           // play audio notification (as earliest possible feedback for nfc activity)
           if(mediaConfirmSound!=null)
             mediaConfirmSound.start
-          rfCommService.connectIp(ipAddr, "ip-target")
+          new Thread() {
+            override def run() {
+              // a little pause to get over nfc tata and hopefully be resumed
+              try { Thread.sleep(700) } catch { case ex:Exception => }
+              rfCommService.connectIp(ipAddr, "ip-target")
+            }
+          }.start                        
 
         } else if(rfCommService.wifiP2pManager!=null && rfCommService.desiredWifiDirect && idxP2p>=0) {
           // evaluate "p2pWifi=..." for WiFi-Direct mac-addr
@@ -853,6 +850,7 @@ class RFCommHelper(activity:Activity,
           if(D) Log.i(TAG, "onNewIntent NDEF_DISCOVERED wait to get into onResume state...")
           new Thread() {
             override def run() {
+              // a little pause to get over nfc tata and hopefully be resumed
               try { Thread.sleep(700) } catch { case ex:Exception => }    // wait to get into onResume state after NDEF_DISCOVERED
               if(D) Log.i(TAG, "onNewIntent NDEF_DISCOVERED rfCommService.connectWifi() ...")
               rfCommService.connectWifi(p2pWifiAddr, "nfc-target", true)
@@ -977,6 +975,8 @@ class RFCommHelper(activity:Activity,
         try { Thread.sleep(500) } catch { case ex:Exception => }
         waitMS-=500
       }
+      // display new state of bt
+      msgFromServiceHandler.obtainMessage(RFCommHelperService.UI_UPDATE, -1, -1).sendToTarget
     }
   }
 

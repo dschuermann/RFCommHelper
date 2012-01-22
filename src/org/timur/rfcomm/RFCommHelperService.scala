@@ -209,7 +209,7 @@ class RFCommHelperService extends android.app.Service {
     else
       if(D) Log.i(TAG, "stopActiveConnection mConnectThread="+mConnectThread+" appService.connectedThread="+appService.connectedThread)
 
-    // we do this in a separate thread, in order to prevent android.os.NetworkOnMainThreadException
+    // we start a separate thread, in order to prevent android.os.NetworkOnMainThreadException
     if(mConnectThread!=null || (appService!=null && appService.connectedThread!=null)) {
       new Thread() {
         override def run() {
@@ -228,6 +228,7 @@ class RFCommHelperService extends android.app.Service {
           if(D) Log.i(TAG, "stopActiveConnection done")
         }
       }.start
+
     } else {
       setState(RFCommHelperService.STATE_LISTEN)   // will send MESSAGE_STATE_CHANGE to activity
       if(D) Log.i(TAG, "stopActiveConnection setState STATE_LISTEN only")
@@ -393,11 +394,14 @@ class RFCommHelperService extends android.app.Service {
       return
     }
     
-    if(D) Log.i(TAG, "connectIp() localAddr="+localAddr+" to targetIpAddr="+targetIpAddr)
-    if(localAddr < targetIpAddr)
+    if(localAddr < targetIpAddr) {
+      if(D) Log.i(TAG, "connectIp() as socketserver localAddr="+localAddr+" to targetIpAddr="+targetIpAddr)
       ipClientConnectorThread(true, null, null)  // socketserver
-    else
+    }
+    else {
+      if(D) Log.i(TAG, "connectIp() as socket client localAddr="+localAddr+" to targetIpAddr="+targetIpAddr)
       ipClientConnectorThread(false, java.net.InetAddress.getByName(targetIpAddr), null)  // client socket
+    }
   }
 
   class AcceptThread(pairedBt:Boolean=true) extends Thread {
@@ -729,6 +733,7 @@ class RFCommHelperService extends android.app.Service {
         // start the thread to handle the streams
         appService.createConnectedThread
         appService.connectedThread.init(mmInStream, mmOutStream, myBtAddr, myBtName, remoteBtAddrString, remoteBtNameString, () => { 
+          // socketCloseFkt to be called by the client
           if(D) Log.i(TAG, "connectedBt disconnecting from "+remoteBtNameString+" "+remoteBtAddrString+" ...")
 
           // disconnect the bt-socket
@@ -737,15 +742,17 @@ class RFCommHelperService extends android.app.Service {
             //socket=null
           }
 
-          // tell the activity that the connection was lost
-          val msg = activityMsgHandler.obtainMessage(RFCommHelperService.DEVICE_DISCONNECT)
-          val bundle = new Bundle
-          bundle.putString(RFCommHelperService.DEVICE_ADDR, remoteBtAddrString)
-          bundle.putString(RFCommHelperService.DEVICE_NAME, remoteBtNameString)
-          msg.setData(bundle)
-          activityMsgHandler.sendMessage(msg)
+          if(state>1) {
+            // tell the activity that the connection was lost
+            val msg = activityMsgHandler.obtainMessage(RFCommHelperService.DEVICE_DISCONNECT)
+            val bundle = new Bundle
+            bundle.putString(RFCommHelperService.DEVICE_ADDR, remoteBtAddrString)
+            bundle.putString(RFCommHelperService.DEVICE_NAME, remoteBtNameString)
+            msg.setData(bundle)
+            activityMsgHandler.sendMessage(msg)
 
-          setState(RFCommHelperService.STATE_LISTEN)   // will send MESSAGE_STATE_CHANGE to activity
+            setState(RFCommHelperService.STATE_LISTEN)   // will send MESSAGE_STATE_CHANGE to activity
+          }
           if(D) Log.i(TAG, "connectedBt post-ConnectedThread processing done")
         })
 
@@ -775,7 +782,8 @@ class RFCommHelperService extends android.app.Service {
     }
   }
 
-  def connectedWifi(socket:java.net.Socket, actor:Boolean, p2pCloseFkt:() => Unit) :Unit = synchronized {
+  // called by ipClientConnectorThread()
+  def connectedWifi(socket:java.net.Socket, actor:Boolean, closeDownConnector:() => Unit) :Unit = synchronized {
     if(D) Log.i(TAG, "connectedWifi actor="+actor)
 
     if(socket!=null) {
@@ -809,6 +817,7 @@ class RFCommHelperService extends android.app.Service {
 */
             appService.createConnectedThread
             appService.connectedThread.init(mmInStream, mmOutStream, localWifiAddrString, localWifiNameString, remoteWifiAddrString, myRemoteWifiNameString, () => { 
+              // socketCloseFkt to be called by the client
               if(D) Log.i(TAG, "connectedWifi post-ConnectedThread processing remoteWifiAddrString="+remoteWifiAddrString+" myRemoteWifiNameString="+myRemoteWifiNameString)
 
               // disconnect the wifi-socket
@@ -817,16 +826,19 @@ class RFCommHelperService extends android.app.Service {
                 //socket=null
               }
 
-              // tell the activity that the connection was lost
-              val msg = activityMsgHandler.obtainMessage(RFCommHelperService.DEVICE_DISCONNECT)
-              val bundle = new Bundle
-              bundle.putString(RFCommHelperService.DEVICE_ADDR, remoteWifiAddrString)
-              bundle.putString(RFCommHelperService.DEVICE_NAME, myRemoteWifiNameString)
-              msg.setData(bundle)
-              activityMsgHandler.sendMessage(msg)
+              closeDownConnector() // -> ipClientConnectorThread.closeDownConnector(), close serverSocket + (for wifi-direct: closeDownP2p -> wifiP2pManager.removeGroup())
 
-              p2pCloseFkt() // will close the socket
-              setState(RFCommHelperService.STATE_LISTEN)   // will send MESSAGE_STATE_CHANGE to activity
+              if(state>1) {
+                // tell the activity that the connection was lost
+                val msg = activityMsgHandler.obtainMessage(RFCommHelperService.DEVICE_DISCONNECT)
+                val bundle = new Bundle
+                bundle.putString(RFCommHelperService.DEVICE_ADDR, remoteWifiAddrString)
+                bundle.putString(RFCommHelperService.DEVICE_NAME, myRemoteWifiNameString)
+                msg.setData(bundle)
+                activityMsgHandler.sendMessage(msg)
+
+                setState(RFCommHelperService.STATE_LISTEN)   // will send MESSAGE_STATE_CHANGE to activity
+              }
               if(D) Log.i(TAG, "connectedWifi post-ConnectedThread processing done")
             })
 
@@ -959,7 +971,8 @@ class RFCommHelperService extends android.app.Service {
     }
   }
 
-  // wifiP2pInfo.isGroupOwner, wifiP2pInfo.groupOwnerAddress
+  // called by connectIp() (for ap-wifi sessions, closeDownP2p==null) 
+  // and by wifiBroadcastReceiver/CONNECTION_CHANGED_ACTION (wifi-direct sessions, closeDownP2p set)
   def ipClientConnectorThread(isHost:Boolean, inetAddressTarget:java.net.InetAddress, closeDownP2p:() => Unit) = {
     if(D) Log.i(TAG, "ipClientConnectorThread isHost="+isHost+" inetAddressTarget="+inetAddressTarget)
 
@@ -969,27 +982,27 @@ class RFCommHelperService extends android.app.Service {
         var serverSocket:ServerSocket = null
         var socket:Socket = null
 
-        def closeDownSocket() {
+        def closeDownConnector() {
           // this will be called (by both sides) when the thread is finished
-          if(D) Log.d(TAG, "ipClientConnectorThread closeDownSocket p2pConnected="+p2pConnected+" p2pChannel="+p2pChannel+" socket="+socket+" serverSocket="+serverSocket)
-
+          if(D) Log.i(TAG, "ipClientConnectorThread closeDownConnector p2pConnected="+p2pConnected+" p2pChannel="+p2pChannel+" socket="+socket+" serverSocket="+serverSocket)
+/*
           // todo: why?
           try { Thread.sleep(300) } catch { case ex:Exception => }
 
+          // will be closed by connectedWifi
           if(socket!=null) {
             socket.close
             socket=null
           }
+*/
           if(serverSocket!=null) {
             serverSocket.close
             serverSocket=null
           }
 
-          if(p2pConnected) {
-            if(D) Log.d(TAG, "ipClientConnectorThread closeDownSocket -> closeDownP2p="+closeDownP2p)
-            if(closeDownP2p!=null)
-              closeDownP2p
-            p2pConnected = false  // probably not required, because WIFI_P2P_CONNECTION_CHANGED_ACTION will be called again with networkInfo.isConnected=false
+          if(D) Log.i(TAG, "ipClientConnectorThread closeDownConnector -> closeDownP2p="+closeDownP2p+" (null for ap-wifi)")
+          if(closeDownP2p!=null) { // will be null for ap-wifi
+            closeDownP2p()  // -> wifiP2pManager.removeGroup()
           }
         }
 
@@ -998,18 +1011,18 @@ class RFCommHelperService extends android.app.Service {
           // which device becomes the isGroupOwner is random, but it will be the device we run our serversocket on...
           // by convention, we make the GroupOwner (using the serverSocket) also the filetransfer-non-actor
           // start server socket
-          if(D) Log.d(TAG, "ipClientConnectorThread server: new ServerSocket("+port+")")
+          if(D) Log.i(TAG, "ipClientConnectorThread server: new ServerSocket("+port+")")
           try {
             serverSocket = new ServerSocket(port)
-            if(D) Log.d(TAG, "ipClientConnectorThread serverSocket opened")
+            if(D) Log.i(TAG, "ipClientConnectorThread serverSocket opened")
             socket = serverSocket.accept
             if(socket!=null) {
-              connectedWifi(socket, actor=false, closeDownSocket)
+              connectedWifi(socket, actor=false, closeDownConnector)
             }
           } catch {
             case ioException:IOException =>
               Log.e(TAG, "ipClientConnectorThread serverSocket failed to connect ex="+ioException.getMessage)
-              closeDownSocket
+              closeDownConnector
           }
 
         } else {
@@ -1017,20 +1030,23 @@ class RFCommHelperService extends android.app.Service {
           // by convention, we make the Group client (using the client socket) also the filetransfer-actor (will start the delivery)
           // because we are NOT the groupOwner, the groupOwnerAddress is the address of the OTHER device
 
+          // little pause to make sure we (the client) don't try to connect before the socketServer is ready
+          try { Thread.sleep(300) } catch { case ex:Exception => }
+
           val SOCKET_TIMEOUT = 5000
           // we wait up to 5000 ms for the connection...
           val host = inetAddressTarget.getHostAddress
-          if(D) Log.d(TAG, "ipClientConnectorThread client: connect to host="+host+" port="+port)
+          if(D) Log.i(TAG, "ipClientConnectorThread client: connect to host="+host+" port="+port)
           socket = new Socket()
           try {
             socket.bind(null)
             socket.connect(new InetSocketAddress(host, port), SOCKET_TIMEOUT)
             // if we don't get connected, an ioexception is thrown, otherwise we continue here by connecting to the other peer
-            connectedWifi(socket, actor=true, closeDownSocket)
+            connectedWifi(socket, actor=true, closeDownConnector)
           } catch {
             case ioException:IOException =>
               Log.e(TAG, "ipClientConnectorThread client socket failed to connect ex="+ioException.getMessage+" ########")
-              closeDownSocket
+              closeDownConnector
           }
         }
       }
@@ -1158,10 +1174,10 @@ class RFCommHelperService extends android.app.Service {
               if(D) Log.i(TAG, "CONNECTION_CHANGED_ACTION onConnectionInfoAvailable groupOwnerAddress="+wifiP2pInfo.groupOwnerAddress+" isGroupOwner="+wifiP2pInfo.isGroupOwner+" ###############")
 
               def closeDownP2p() {
-                if(D) Log.d(TAG, "closeDownP2p p2pConnected="+p2pConnected)
+                if(D) Log.i(TAG, "closeDownP2p p2pConnected="+p2pConnected)
                 if(p2pConnected) {
-                  if(D) Log.d(TAG, "closeDownP2p wifiP2pManager.removeGroup() (this is how we disconnect from p2pWifi) SKIP ##################")
-/*
+                  //if(D) Log.i(TAG, "closeDownP2p wifiP2pManager.removeGroup() (this is how we disconnect from p2pWifi) SKIP ##################")
+
 // todo: related to p2pWifi issue, not sure if this is necessary
                   wifiP2pManager.removeGroup(p2pChannel, new ActionListener() {
                     override def onSuccess() {
@@ -1175,8 +1191,6 @@ class RFCommHelperService extends android.app.Service {
                       // note: it seems to be 'normal' for one of the two devices to receive reason=2 on disconenct
                     }
                   })
-*/
-                  p2pConnected = false  // probably not required, because WIFI_P2P_CONNECTION_CHANGED_ACTION will be called again with networkInfo.isConnected=false
                 }
               }
 
