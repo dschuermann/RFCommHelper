@@ -326,12 +326,12 @@ class RFCommHelperService extends android.app.Service {
       wifiP2pConfig.deviceAddress = p2pWifiAddr
       wifiP2pManager.connect(p2pChannel, wifiP2pConfig, new ActionListener() {
         override def onSuccess() {
-          if(D) Log.i(TAG, "connectWifi wifiP2pManager.connect() success ####")
+          if(D) Log.i(TAG, "connectWifi wifiP2pManager.connect() success")
           // we expect WIFI_P2P_CONNECTION_CHANGED_ACTION in WiFiDirectBroadcastReceiver to notify us
           // however sometimes this does NOT happen
-          // todo tmtmtm: this is why we still must implement a "connect-request abort crieria" !!!
-          // option 1: we receive PEERS_CHANGED_ACTION with deviceAddress=[our target mac addr] and status=failed
-          // option 2: a timeout
+          // todo tmtmtm: this is why we still need to implement "connect-request auto-abort crierias" !!!
+          // criteria 1: we receive PEERS_CHANGED_ACTION with deviceAddress=[our target mac addr] and status=failed
+          // criteria 2: a simple timeout as a safty belt
           
           // let's render the connect-progress animation (like we do in connectBt)
           connectedRadio = 2 // wifi    // todo: duplicate - likely not necessary
@@ -743,7 +743,7 @@ class RFCommHelperService extends android.app.Service {
             //socket=null
           }
 
-          if(state>1) {
+          if(state>RFCommHelperService.STATE_LISTEN) {
             // tell the activity that the connection was lost
             val msg = activityMsgHandler.obtainMessage(RFCommHelperService.DEVICE_DISCONNECT)
             val bundle = new Bundle
@@ -829,7 +829,7 @@ class RFCommHelperService extends android.app.Service {
 
               closeDownConnector() // -> ipClientConnectorThread.closeDownConnector(), close serverSocket + (for wifi-direct: closeDownP2p -> wifiP2pManager.removeGroup())
 
-              if(state>1) {
+              if(state>RFCommHelperService.STATE_LISTEN) {
                 // tell the activity that the connection was lost
                 val msg = activityMsgHandler.obtainMessage(RFCommHelperService.DEVICE_DISCONNECT)
                 val bundle = new Bundle
