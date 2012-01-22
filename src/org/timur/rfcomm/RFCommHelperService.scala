@@ -325,12 +325,13 @@ class RFCommHelperService extends android.app.Service {
       wifiP2pConfig.wps.setup = WpsInfo.PBC
       wifiP2pConfig.deviceAddress = p2pWifiAddr
       wifiP2pManager.connect(p2pChannel, wifiP2pConfig, new ActionListener() {
-        // note: may result in "E/wpa_supplicant(): Failed to create interface p2p-wlan0-5: -12 (Out of memory)"
-        //       in which case onSuccess() is often still be called     
         override def onSuccess() {
           if(D) Log.i(TAG, "connectWifi wifiP2pManager.connect() success ####")
           // we expect WIFI_P2P_CONNECTION_CHANGED_ACTION in WiFiDirectBroadcastReceiver to notify us
-          // todo: however sometimes this does NOT happen
+          // however sometimes this does NOT happen
+          // todo tmtmtm: this is why we still must implement a "connect-request abort crieria" !!!
+          // option 1: we receive PEERS_CHANGED_ACTION with deviceAddress=[our target mac addr] and status=failed
+          // option 2: a timeout
           
           // let's render the connect-progress animation (like we do in connectBt)
           connectedRadio = 2 // wifi    // todo: duplicate - likely not necessary
@@ -1178,7 +1179,6 @@ class RFCommHelperService extends android.app.Service {
                 if(p2pConnected) {
                   //if(D) Log.i(TAG, "closeDownP2p wifiP2pManager.removeGroup() (this is how we disconnect from p2pWifi) SKIP ##################")
 
-// todo: related to p2pWifi issue, not sure if this is necessary
                   wifiP2pManager.removeGroup(p2pChannel, new ActionListener() {
                     override def onSuccess() {
                       if(D) Log.i(TAG, "closeDownP2p wifiP2pManager.removeGroup() success")
