@@ -134,6 +134,7 @@ class RFCommHelper(activity:Activity,
                    mediaConfirmSound:MediaPlayer,
                    mediaNegativeSound:MediaPlayer,
                    radioTypeWanted:Int,  // all radio's meaningfull to the application (vs. rfCommService.desiredXXXXX = radios that are desired by the user)
+                   radioDialogAllowed:Boolean,
                    acceptThreadSecureName:String, acceptThreadSecureUuid:String,
                    acceptThreadInsecureName:String, acceptThreadInsecureUuid:String,
                    ipPort:Int, appName:String) {
@@ -178,7 +179,7 @@ class RFCommHelper(activity:Activity,
       rfCommService = rawBinder.asInstanceOf[RFCommHelperService#LocalBinder].getService
       if(rfCommService==null) {
         Log.e(TAG, "constructor rfCommServiceConnection onServiceConnected no interface to service, rfCommService==null")
-        val errMsg = "Error - failed to get service interface from binder"
+        val errMsg = "Error: failed to get service interface from binder"
         if(msgFromServiceHandler!=null)
           msgFromServiceHandler.obtainMessage(RFCommHelperService.ALERT_MESSAGE, -1, -1, errMsg).sendToTarget
         else
@@ -284,7 +285,7 @@ class RFCommHelper(activity:Activity,
       if(D) Log.i(TAG, "initBt rfCommService.desiredBluetooth="+rfCommService.desiredBluetooth+" mBluetoothAdapter="+mBluetoothAdapter)
       if(rfCommService.desiredBluetooth && mBluetoothAdapter!=null && mBluetoothAdapter.isEnabled) {
         // stop any old bluetooth accept threads
-        if(D) Log.i(TAG, "initBt rfCommService.stopAcceptThreads")
+        if(D) Log.i(TAG, "initBt stop any old bluetooth accept threads -> rfCommService.stopAcceptThreads")
         rfCommService.stopAcceptThreads
 
         // start bluetooth accept thread
@@ -312,13 +313,13 @@ class RFCommHelper(activity:Activity,
   
   // dynamically created dialog box (not inflated from xml)
   def radioDialog(backKeyIsExit:Boolean=false) {
+    // user did not yet see the dialog to turn all wanted radio on, show it 
     if(D) Log.i(TAG, "radioDialog resumed="+rfCommService.activityResumed)
     if(activityDestroyed) {
       if(D) Log.i(TAG, "radioDialog aborted because: activityDestroyed="+activityDestroyed)
       return
     }
 
-    // user did not yet see the dialog, offer the dialog to turn all wanted radio on
     val radioSelectDialogBuilder = new AlertDialog.Builder(activity)
     radioSelectDialogBuilder.setTitle("Radio selection")
     // todo: use a nice fancy "radio wave" background ?
@@ -328,7 +329,7 @@ class RFCommHelper(activity:Activity,
     radioSelectDialogLayout.setPadding(40, 40, 40, 40)
     radioSelectDialogLayout.setOrientation(LinearLayout.VERTICAL)
 
-    if(D) Log.i(TAG, "radioDialog() rfCommService.desiredBluetooth="+rfCommService.desiredBluetooth)
+    if(D) Log.i(TAG, "radioDialog rfCommService.desiredBluetooth="+rfCommService.desiredBluetooth)
 
     val radioBluetoothCheckbox = new CheckBox(activity)
     if((radioTypeWanted&RFCommHelper.RADIO_BT)!=0) {
@@ -428,59 +429,81 @@ class RFCommHelper(activity:Activity,
         }                   
       })
 
-    AndrTools.runOnUiThread(activity) { () =>
-      val radioSelectDialog = radioSelectDialogBuilder.create
-      var alertReady = false
-      radioSelectDialog.setOnShowListener(new DialogInterface.OnShowListener() {
-        override def onShow(dialogInterface:DialogInterface) {
-          if(alertReady==false) {
-            val button = radioSelectDialog.getButton(DialogInterface.BUTTON_POSITIVE)
-            button.setOnClickListener(new View.OnClickListener() {
-              override def onClick(view:View) {
-                // evaluate checkboxes and set desired booleans
-                rfCommService.desiredBluetooth = radioBluetoothCheckbox.isChecked
-                rfCommService.desiredWifiDirect = radioWifiDirectCheckbox.isChecked
-                rfCommService.desiredNfc = radioNfcCheckbox.isChecked
-                rfCommService.pairedBtOnly = !radioPairlessBtCheckbox.isChecked
-                if(D) Log.i(TAG, "radioSelectDialog onClick desiredBluetooth="+rfCommService.desiredBluetooth+" desiredWifiDirect="+rfCommService.desiredWifiDirect+" desiredNfc="+rfCommService.desiredNfc)
+    def radioDialogConfirm() {
+      // evaluate checkboxes and set desired booleans
+      rfCommService.desiredBluetooth = radioBluetoothCheckbox.isChecked
+      rfCommService.desiredWifiDirect = radioWifiDirectCheckbox.isChecked
+      rfCommService.desiredNfc = radioNfcCheckbox.isChecked
+      rfCommService.pairedBtOnly = !radioPairlessBtCheckbox.isChecked
+      if(D) Log.i(TAG, "radioSelectDialog radioDialogConfirm desiredBluetooth="+rfCommService.desiredBluetooth+" desiredWifiDirect="+rfCommService.desiredWifiDirect+" desiredNfc="+rfCommService.desiredNfc+" ################")
 
-                dialogInterface.cancel
+      //dialogInterface.cancel
 
-                // persist desired-flags
-                storeRadioSelection(rfCommService.desiredBluetooth,rfCommService.desiredWifiDirect,rfCommService.desiredNfc, rfCommService.pairedBtOnly)
+      // persist desired-flags
+      storeRadioSelection(rfCommService.desiredBluetooth,rfCommService.desiredWifiDirect,rfCommService.desiredNfc, rfCommService.pairedBtOnly)
 
-                switchOnDesiredRadios
+      switchOnDesiredRadios
 
-                // start bt-accept-thread
-                initBt
+      // start bt-accept-thread
+      initBt
 
-                // initialize nfc (initialize nfc for wifi will come through WiFiDirectBroadcastReceiver WIFI_P2P_THIS_DEVICE_CHANGED_ACTION)
-                if(rfCommService.desiredNfc && rfCommService.mNfcAdapter!=null && rfCommService.mNfcAdapter.isEnabled) {
-                  if(D) Log.i(TAG, "radioDialog after radioSelectDialog -> nfcServiceSetup")
-                  rfCommService.nfcServiceSetup
-                } else {
-                  // disable nfc
-                  if(rfCommService.mNfcAdapter!=null && rfCommService.mNfcAdapter.isEnabled) {
-                    if(rfCommService.activityResumed) {
-                      try {
-                        rfCommService.mNfcAdapter.disableForegroundDispatch(activity)
-                      } catch {
-                        case npex:java.lang.NullPointerException =>
-                          Log.e(TAG, "radioDialog disableForegroundDispatch NullPointerException")
-                      }
-                    }
-                    rfCommService.mNfcAdapter.setNdefPushMessage(null, activity)
-                  }
-                }
-
-                radioDialogPossibleAndNotYetShown = false  // radioDialog will not again be shown on successive onResume's
-              }
-            })
-            alertReady = true
+      // initialize nfc (initialize nfc for wifi will come through WiFiDirectBroadcastReceiver WIFI_P2P_THIS_DEVICE_CHANGED_ACTION)
+      if(rfCommService.desiredNfc && rfCommService.mNfcAdapter!=null && rfCommService.mNfcAdapter.isEnabled) {
+        if(D) Log.i(TAG, "radioDialog after radioSelectDialog -> nfcServiceSetup")
+        rfCommService.nfcServiceSetup
+      } else {
+        // disable nfc
+        if(rfCommService.mNfcAdapter!=null && rfCommService.mNfcAdapter.isEnabled) {
+          if(rfCommService.activityResumed) {
+            try {
+              rfCommService.mNfcAdapter.disableForegroundDispatch(activity)
+            } catch {
+              case npex:java.lang.NullPointerException =>
+                Log.e(TAG, "radioDialog disableForegroundDispatch NullPointerException")
+            }
           }
+          rfCommService.mNfcAdapter.setNdefPushMessage(null, activity)
         }
-      })
-      radioSelectDialog.show
+      }
+
+      radioDialogPossibleAndNotYetShown = false  // radioDialog will not again be shown on successive onResume's
+      
+      // this is the point in time when the app can make use of the radios
+      if(D) Log.i(TAG, "radioDialog finished ###############################################################")
+      // todo tmtmtm: need to notify app, probably via msgHandler
+    }
+
+    if(radioDialogAllowed) {
+      if(D) Log.i(TAG, "radioSelectDialog radioDialogAllowed==true")
+      AndrTools.runOnUiThread(activity) { () =>
+        val radioSelectDialog = radioSelectDialogBuilder.create
+        var alertReady = false
+        radioSelectDialog.setOnShowListener(new DialogInterface.OnShowListener() {
+          override def onShow(dialogInterface:DialogInterface) {
+            if(alertReady==false) {
+              val button = radioSelectDialog.getButton(DialogInterface.BUTTON_POSITIVE)
+              button.setOnClickListener(new View.OnClickListener() {
+                override def onClick(view:View) {
+                  dialogInterface.cancel
+                  radioDialogConfirm
+                }
+              })
+              alertReady = true
+            }
+          }
+        })
+        radioSelectDialog.show
+      }
+
+    } else {
+      if(D) Log.i(TAG, "radioSelectDialog radioDialogAllowed==false")
+      // (virtually) check-on all desired radios
+      rfCommService.desiredBluetooth = (radioTypeWanted & RFCommHelper.RADIO_BT)!=0
+      rfCommService.desiredWifiDirect = (radioTypeWanted & RFCommHelper.RADIO_P2PWIFI)!=0
+      rfCommService.desiredNfc = (radioTypeWanted & RFCommHelper.RADIO_NFC)!=0
+      rfCommService.pairedBtOnly = false  // todo: hardcoded pairedBtOnly=false if radioDialogAllowed=false ?
+
+      radioDialogConfirm
     }
   }
 
@@ -596,9 +619,9 @@ class RFCommHelper(activity:Activity,
       if(D) Log.i(TAG, "onResumeAction radioTypeWanted="+radioTypeWanted+" radioDialogNeeded="+radioDialogNeeded)
       if(radioDialogNeeded) {
         // show the radio dialog
+        if(D) Log.i(TAG, "onResumeAction new thread -> radioDialog")
         new Thread() {
           override def run() {
-            if(D) Log.i(TAG, "onResumeAction new thread -> radioDialog")
             radioDialog(true) // will turn radioDialogPossibleAndNotYetShown off 
           }
         }.start
@@ -634,7 +657,7 @@ class RFCommHelper(activity:Activity,
           // delay this, so that user can still exit app if wanted
           try { Thread.sleep(600) } catch { case ex:Exception => }
           if(!activityDestroyed) {
-            // todo: maybe better popup the radio dialog here?
+            // todo tmtmtm: maybe better popup the radio-dialog here again?
             switchOnDesiredRadios
           }
         }
@@ -884,7 +907,7 @@ class RFCommHelper(activity:Activity,
                 // our local btAddr is < than the remote btAddr: we just wait for a bt-connect request
                 if(D) Log.i(TAG, "onNewIntent NDEF_DISCOVERED passively waiting for incoming bt-connect request... mSecureAcceptThread="+rfCommService.mSecureAcceptThread)
                 // show "connecting progress" animation
-                // todo: what if noone connects? can this aniation be aborted, does it timeout?
+                // todo: what if noone connects? can this animation be aborted, does it timeout?
                 rfCommService.state = RFCommHelperService.STATE_CONNECTING    // tmtmtm?
                 if(msgFromServiceHandler!=null)
                   msgFromServiceHandler.obtainMessage(RFCommHelperService.CONNECTING, -1, -1, remoteBluetoothDevice.getName+" "+remoteBluetoothDevice.getAddress).sendToTarget
@@ -954,6 +977,7 @@ class RFCommHelper(activity:Activity,
       // todo: onexit: offer to disable wifi-direct
 
     } else if(rfCommService.desiredBluetooth && mBluetoothAdapter!=null && !mBluetoothAdapter.isEnabled) {
+      if(D) Log.i(TAG, "switchOnDesiredRadios must switch on bluetooth...")
 /*
       // let user enable bluetooth
       val enableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
@@ -966,15 +990,16 @@ class RFCommHelper(activity:Activity,
       mBluetoothAdapter.enable // this may take some time
       autoEnabledBt = true // so we don't forget to switch it off on exit
       // todo tmtmtm: really need a busy bee ("switching on bluetooth...")
-      AndrTools.runOnUiThread(activity) { () =>
+      /*AndrTools.runOnUiThread(activity) { () =>
         Toast.makeText(activity, "Switching on Bluetooth", Toast.LENGTH_SHORT).show
-      }
+      }*/
       var waitMS = 8000
       while(!mBluetoothAdapter.isEnabled && waitMS>0) {
         if(D) Log.i(TAG, "switchOnDesiredRadios mBluetoothAdapter.isEnabled="+mBluetoothAdapter.isEnabled)
         try { Thread.sleep(500) } catch { case ex:Exception => }
         waitMS-=500
       }
+      if(D) Log.i(TAG, "switchOnDesiredRadios bluetooth now switched on ###############")
       // display new state of bt
       msgFromServiceHandler.obtainMessage(RFCommHelperService.UI_UPDATE, -1, -1).sendToTarget
     }
