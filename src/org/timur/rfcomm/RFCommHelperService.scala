@@ -146,6 +146,8 @@ class RFCommHelperService extends android.app.Service {
   private val TAG = "RFCommHelperService"
   private val D = true
   @volatile private var mConnectThread:ConnectThreadBt = null
+
+  if(D) Log.i(TAG, "constructor try to access BluetoothAdapter.getDefaultAdapter...")
   private val mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter
   private var myBtName = if(mBluetoothAdapter!=null) mBluetoothAdapter.getName else null
   private var myBtAddr = if(mBluetoothAdapter!=null) mBluetoothAdapter.getAddress else null  

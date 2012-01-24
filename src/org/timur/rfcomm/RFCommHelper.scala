@@ -83,6 +83,10 @@ import android.net.NetworkInfo
 // so that filetransfer can continue while the app is in background (and the activity might have been removed from memory)
 
 object RFCommHelper {
+  val MSG_SERVICE_FAILED = 50
+  val MSG_SERVICE_INITIALIZED = 51
+  val MSG_RADIO_AVAILABLE = 52
+
   // allow access from Java, see: http://stackoverflow.com/questions/8434013/can-i-access-a-scala-objects-val-without-parentheses-from-java
   @scala.reflect.BeanProperty val RADIO_BT:Int = 1
   @scala.reflect.BeanProperty val RADIO_BT_INSECURE:Int = 2
@@ -126,8 +130,11 @@ class RFCommHelper(activity:Activity,
                    prefsPrivate:SharedPreferences, 
                    prefsSharedP2pBt:SharedPreferences,
                    prefsSharedP2pWifi:SharedPreferences,
+/*
                    serviceInitializedFkt:() => Unit, 
                    serviceFailedFkt:() => Unit, 
+                   radioAvailableFkt:() => Unit,
+*/
                    appService:RFServiceTrait,
                    activityRuntimeClass:java.lang.Class[Activity],
                    mediaConfirmSound:MediaPlayer,
@@ -170,8 +177,7 @@ class RFCommHelper(activity:Activity,
     def onServiceDisconnected(className:ComponentName) { 
       if(D) Log.i(TAG, "constructor rfCommServiceConnection onServiceDisconnected set rfCommService=null")
       rfCommService = null
-      if(serviceFailedFkt!=null)
-        serviceFailedFkt()
+      msgFromServiceHandler.obtainMessage(RFCommHelper.MSG_SERVICE_FAILED, -1, -1, null).sendToTarget
     } 
     def onServiceConnected(className:ComponentName, rawBinder:IBinder) { 
       if(D) Log.i(TAG, "constructor rfCommServiceConnection onServiceConnected localBinder.getService ...")
@@ -227,16 +233,13 @@ class RFCommHelper(activity:Activity,
         rfCommService.pairedBtOnly = prefsPrivate.getBoolean("pairedBtOnly", false)
       }
 
-      // rfCommService is initialized
-      if(serviceInitializedFkt!=null)
-        serviceInitializedFkt()
-
       // we need to call our onResumeAction method ourselfs now, because the original 1st onResume was not able to call us, because this service was not yet loaded then
       if(D) Log.i(TAG, "constructor rfCommServiceConnection onServiceConnected activityResumed="+rfCommService.activityResumed+" -> onResume")
       new Thread() {
         override def run() {
           onResumeAction(false)  // this will run radioSelect and start the AcceptThread(s)
-          if(D) Log.i(TAG, "constructor rfCommServiceConnection onServiceConnected post onResumeAction -> serviceInitializedFkt")
+          // tell app: rfCommService is initialized
+          msgFromServiceHandler.obtainMessage(RFCommHelper.MSG_SERVICE_INITIALIZED, -1, -1, null).sendToTarget
         }
       }.start                        
     } 
@@ -248,8 +251,7 @@ class RFCommHelper(activity:Activity,
     radioDialogPossibleAndNotYetShown = true // will be evaluated in onResume
   } else {
     Log.e(TAG, "constructor bindService failed")
-    if(serviceFailedFkt!=null)
-      serviceFailedFkt()
+    msgFromServiceHandler.obtainMessage(RFCommHelper.MSG_SERVICE_FAILED, -1, -1, null).sendToTarget
   }
 
   def setActivityResumed(state:Boolean) {
@@ -450,6 +452,7 @@ class RFCommHelper(activity:Activity,
       if(rfCommService.desiredNfc && rfCommService.mNfcAdapter!=null && rfCommService.mNfcAdapter.isEnabled) {
         if(D) Log.i(TAG, "radioDialog after radioSelectDialog -> nfcServiceSetup")
         rfCommService.nfcServiceSetup
+        
       } else {
         // disable nfc
         if(rfCommService.mNfcAdapter!=null && rfCommService.mNfcAdapter.isEnabled) {
@@ -469,7 +472,7 @@ class RFCommHelper(activity:Activity,
       
       // this is the point in time when the app can make use of the radios
       if(D) Log.i(TAG, "radioDialog finished ###############################################################")
-      // todo tmtmtm: need to notify app, probably via msgHandler
+      msgFromServiceHandler.obtainMessage(RFCommHelper.MSG_RADIO_AVAILABLE, -1, -1, null).sendToTarget
     }
 
     if(radioDialogAllowed) {
