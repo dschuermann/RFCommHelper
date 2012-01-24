@@ -233,13 +233,14 @@ class RFCommHelper(activity:Activity,
         rfCommService.pairedBtOnly = prefsPrivate.getBoolean("pairedBtOnly", false)
       }
 
+      // tell app: rfCommService is initialized
+      msgFromServiceHandler.obtainMessage(RFCommHelper.MSG_SERVICE_INITIALIZED, -1, -1, null).sendToTarget
+
       // we need to call our onResumeAction method ourselfs now, because the original 1st onResume was not able to call us, because this service was not yet loaded then
       if(D) Log.i(TAG, "constructor rfCommServiceConnection onServiceConnected activityResumed="+rfCommService.activityResumed+" -> onResume")
       new Thread() {
         override def run() {
           onResumeAction(false)  // this will run radioSelect and start the AcceptThread(s)
-          // tell app: rfCommService is initialized
-          msgFromServiceHandler.obtainMessage(RFCommHelper.MSG_SERVICE_INITIALIZED, -1, -1, null).sendToTarget
         }
       }.start                        
     } 
@@ -657,6 +658,10 @@ class RFCommHelper(activity:Activity,
             rfCommService.mNfcAdapter.setNdefPushMessage(null, activity)
           }
         }
+
+        // this is the point in time when the app can make use of the radios
+        if(D) Log.i(TAG, "radioDialog finished ###############################################################")
+        msgFromServiceHandler.obtainMessage(RFCommHelper.MSG_RADIO_AVAILABLE, -1, -1, null).sendToTarget
       }
 
     } else {
