@@ -986,16 +986,7 @@ class RFCommHelperService extends android.app.Service {
         def closeDownConnector() {
           // this will be called (by both sides) when the thread is finished
           if(D) Log.i(TAG, "ipClientConnectorThread closeDownConnector p2pConnected="+p2pConnected+" p2pChannel="+p2pChannel+" socket="+socket+" serverSocket="+serverSocket)
-/*
-          // todo: why?
-          try { Thread.sleep(300) } catch { case ex:Exception => }
 
-          // will be closed by connectedWifi
-          if(socket!=null) {
-            socket.close
-            socket=null
-          }
-*/
           if(serverSocket!=null) {
             serverSocket.close
             serverSocket=null

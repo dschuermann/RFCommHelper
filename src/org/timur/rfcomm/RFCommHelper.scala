@@ -21,7 +21,6 @@
 package org.timur.rfcomm
 
 import java.net.Socket
-import java.net.ServerSocket
 import java.net.InetSocketAddress
 import java.net.InetAddress
 import java.io.PrintStream
@@ -132,7 +131,7 @@ class RFCommHelper(activity:Activity,
                    appService:RFServiceTrait,
                    activityRuntimeClass:java.lang.Class[Activity],
                    mediaConfirmSound:MediaPlayer,
-                   mediaNegativeSound:MediaPlayer,
+                   mediaFailSound:MediaPlayer,
                    radioTypeWanted:Int,  // all radio's meaningfull to the application (vs. rfCommService.desiredXXXXX = radios that are desired by the user)
                    radioDialogAllowed:Boolean,
                    acceptThreadSecureName:String, acceptThreadSecureUuid:String,
@@ -569,19 +568,25 @@ class RFCommHelper(activity:Activity,
           // register p2pChannel and wifiDirectBroadcastReceiver
           // note: this will result in a call to setIsWifiP2pEnabled(), so we know wether p2pWifi is already activated!
           if(D) Log.i(TAG, "onResumeAction wifiP2p is supported, initialze p2pChannel and register wifiDirectBroadcastReceiver")
-          rfCommService.p2pChannel = rfCommService.wifiP2pManager.initialize(activity, activity.getMainLooper, /*wifiP2pChannelListener*/ null)
-          wifiDirectBroadcastReceiver = rfCommService.newWiFiDirectBroadcastReceiver()
-          activity.registerReceiver(wifiDirectBroadcastReceiver, intentFilter)
+          try {
+            // next step requires android.permission.CHANGE_WIFI_STATE
+            rfCommService.p2pChannel = rfCommService.wifiP2pManager.initialize(activity, activity.getMainLooper, /*wifiP2pChannelListener*/ null)
+            wifiDirectBroadcastReceiver = rfCommService.newWiFiDirectBroadcastReceiver()
+            activity.registerReceiver(wifiDirectBroadcastReceiver, intentFilter)
 
-          rfCommService.wifiP2pManager.discoverPeers(rfCommService.p2pChannel, new WifiP2pManager.ActionListener() {
-            override def onFailure(reasonCode:Int) {
-              val reasonString = if(reasonCode==0) "Error" else if(reasonCode==1) "P2P_UNSUPPORTED" else if(reasonCode==2) "Busy" else "unknown"
-              if(D) Log.i(TAG, "onResumeAction wifiP2pManager.discoverPeers failed reasonCode="+reasonCode+" "+reasonString)
-            }
-            override def onSuccess() {
-              //if(D) Log.i(TAG, "onResumeAction wifiP2pManager.discoverPeers onSuccess")
-            }
-          })
+            rfCommService.wifiP2pManager.discoverPeers(rfCommService.p2pChannel, new WifiP2pManager.ActionListener() {
+              override def onFailure(reasonCode:Int) {
+                val reasonString = if(reasonCode==0) "Error" else if(reasonCode==1) "P2P_UNSUPPORTED" else if(reasonCode==2) "Busy" else "unknown"
+                if(D) Log.i(TAG, "onResumeAction wifiP2pManager.discoverPeers failed reasonCode="+reasonCode+" "+reasonString)
+              }
+              override def onSuccess() {
+                //if(D) Log.i(TAG, "onResumeAction wifiP2pManager.discoverPeers onSuccess")
+              }
+            })
+          } catch {
+            case secex:java.lang.SecurityException =>
+              if(D) Log.i(TAG, "onResumeAction SecurityException on wifiP2pManager.initialize")
+          }
         }
       }
       if(rfCommService.wifiP2pManager==null) {
@@ -792,12 +797,12 @@ class RFCommHelper(activity:Activity,
         val idxAppname = ncfActionString.indexOf("app=")
         if(idxAppname<0) {
           if(D) Log.i(TAG, "onNewIntent NDEF_DISCOVERED ncfActionString no 'app=' found in received ncfActionString")
-          if(mediaNegativeSound!=null)
+          if(mediaFailSound!=null)
             new Thread() {
               override def run() {
                 // play negative sound after a short amount
                 try { Thread.sleep(1400) } catch { case ex:Exception => }
-                mediaNegativeSound.start
+                mediaFailSound.start
               }
             }.start                        
           return true
@@ -806,12 +811,12 @@ class RFCommHelper(activity:Activity,
         var otherAppName = ncfActionString.substring(idxAppname+4)
         if(otherAppName==null) {
           if(D) Log.i(TAG, "onNewIntent NDEF_DISCOVERED ncfActionString no 'app=xxx' found in received ncfActionString")
-          if(mediaNegativeSound!=null)
+          if(mediaFailSound!=null)
             new Thread() {
               override def run() {
                 // play negative sound after a short amount
                 try { Thread.sleep(1400) } catch { case ex:Exception => }
-                mediaNegativeSound.start
+                mediaFailSound.start
               }
             }.start                        
           return true
@@ -822,12 +827,12 @@ class RFCommHelper(activity:Activity,
           otherAppName = otherAppName.substring(0,idxPipe)
         if(otherAppName!=appName) {
           if(D) Log.i(TAG, "onNewIntent NDEF_DISCOVERED ncfActionString otherAppName="+otherAppName+" != "+appName)
-          if(mediaNegativeSound!=null)
+          if(mediaFailSound!=null)
             new Thread() {
               override def run() {
                 // play negative sound after a short amount
                 try { Thread.sleep(1400) } catch { case ex:Exception => }
-                mediaNegativeSound.start
+                mediaFailSound.start
               }
             }.start                        
           return true
