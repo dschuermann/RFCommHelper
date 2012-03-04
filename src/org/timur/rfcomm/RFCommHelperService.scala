@@ -56,7 +56,6 @@ import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothServerSocket
 import android.bluetooth.BluetoothSocket
-import android.media.MediaPlayer
 import android.provider.Settings
 import android.widget.Toast
 
@@ -89,14 +88,15 @@ object RFCommHelperService {
   @scala.reflect.BeanProperty val DEVICE_DISCONNECT = 7 // todo: how is this different from MESSAGE_STATE_CHANGE ?
 
   @scala.reflect.BeanProperty val CONNECTION_START = 9
-  @scala.reflect.BeanProperty val CONNECTING = 16       // todo: how is this different from CONNECTION_START
+  //not being used: @scala.reflect.BeanProperty val CONNECTING = 16       // todo: how is this different from CONNECTION_START
 
   @scala.reflect.BeanProperty val CONNECTION_FAILED = 8 // todo: how is this different from MESSAGE_STATE_CHANGE ?
 
   @scala.reflect.BeanProperty val MESSAGE_DEVICE_NAME = 4 // todo: how is this different from MESSAGE_STATE_CHANGE ?
 
   @scala.reflect.BeanProperty val UI_UPDATE = 14        // non-alert message
-  @scala.reflect.BeanProperty val ALERT_MESSAGE = 15    // alert-message (user must confirm?)
+  @scala.reflect.BeanProperty val ALERT_MESSAGE = 15    // temporary (=toast)
+  @scala.reflect.BeanProperty val PERSIST_MESSAGE = 17  // stays until replaced (or confirmed?)
 
   // Key names received from Service to the activity handler
   val DEVICE_NAME = "device_name"
@@ -124,7 +124,7 @@ class RFCommHelperService extends android.app.Service {
   var nfcFilters:Array[IntentFilter] = null
   var nfcTechLists:Array[Array[String]] = null
   var ipPort = 8954
-  var appName:String = null
+  var appName:String = null  // should be the package name, used for nfc intents
   var activityRuntimeClass:java.lang.Class[Activity] = null  // needed for nfcPendingIntent only
   var nfcForegroundPushMessage:NdefMessage = null
   var desiredBluetooth = false
@@ -215,16 +215,16 @@ class RFCommHelperService extends android.app.Service {
     if(mConnectThread!=null || (appService!=null && appService.connectedThread!=null)) {
       new Thread() {
         override def run() {
-          if(mConnectThread != null) {
-            // disconnect in case we were the connect initiator
-            mConnectThread.cancel
-            mConnectThread = null
-          }
           if(appService!=null && appService.connectedThread!=null) {
             // disconnect in case we were the connect responder
             if(D) Log.i(TAG, "stopActiveConnection appService.connectedThread="+appService.connectedThread)
             appService.connectedThread.cancel
             appService.connectedThread = null
+          }
+          if(mConnectThread != null) {
+            // disconnect in case we were the connect initiator
+            mConnectThread.cancel
+            mConnectThread = null
           }
           setState(RFCommHelperService.STATE_LISTEN)   // will send MESSAGE_STATE_CHANGE to activity
           if(D) Log.i(TAG, "stopActiveConnection done")
@@ -248,36 +248,40 @@ class RFCommHelperService extends android.app.Service {
     }
   }
 
+  // called by onNewIntent(): as a result of NfcAdapter.ACTION_NDEF_DISCOVERED
   // called by the activity: options menu "connect" -> onActivityResult() -> connectDevice()
-  // called by the activity: as a result of NfcAdapter.ACTION_NDEF_DISCOVERED
   def connectBt(newRemoteDevice:BluetoothDevice, reportConnectState:Boolean=true, onstartEnableBackupConnection:Boolean=false) :Unit = synchronized {
-    if(newRemoteDevice==null) {
+    if(onstartEnableBackupConnection==false && newRemoteDevice==null) {
       Log.e(TAG, "connect() remoteDevice==null, abort")
       return
     }
 
-    connectedRadio = 1 // bt
+    //connectedRadio = 1 // bt    // todo: premature? will be set again in connectedBt()
+    
     state = RFCommHelperService.STATE_CONNECTING
-    if(D) Log.i(TAG, "connectBt remoteAddr="+newRemoteDevice.getAddress+" name=["+newRemoteDevice.getName+"] pairedBtOnly="+pairedBtOnly)
 
-    // store target deviceAddr and deviceName to "org.timur.p2pDevices" preferences
-    if(newRemoteDevice.getName!=null && newRemoteDevice.getName.length>0) {
-      if(prefsSharedP2pBtEditor!=null) {
-        val existingName = prefsSharedP2pBt.getString(newRemoteDevice.getAddress,null)
-        if(existingName==null || existingName.length==0 || existingName=="nfc-target") {
-          prefsSharedP2pBtEditor.putString(newRemoteDevice.getAddress,newRemoteDevice.getName)
-          prefsSharedP2pBtEditor.commit
+    if(newRemoteDevice!=null) {
+      if(D) Log.i(TAG, "connectBt remoteAddr="+newRemoteDevice.getAddress+" name=["+newRemoteDevice.getName+"] pairedBtOnly="+pairedBtOnly)
+
+      // store target deviceAddr and deviceName to "org.timur.p2pDevices" preferences
+      if(newRemoteDevice.getName!=null && newRemoteDevice.getName.length>0) {
+        if(prefsSharedP2pBtEditor!=null) {
+          val existingName = prefsSharedP2pBt.getString(newRemoteDevice.getAddress,null)
+          if(existingName==null || existingName.length==0 || existingName=="nfc-target") {
+            prefsSharedP2pBtEditor.putString(newRemoteDevice.getAddress,newRemoteDevice.getName)
+            prefsSharedP2pBtEditor.commit
+          }
         }
       }
-    }
 
-    if(reportConnectState && activityMsgHandler!=null) {
-      val msg = activityMsgHandler.obtainMessage(RFCommHelperService.CONNECTION_START)
-      val bundle = new Bundle
-      bundle.putString(RFCommHelperService.DEVICE_ADDR, newRemoteDevice.getAddress)
-      bundle.putString(RFCommHelperService.DEVICE_NAME, newRemoteDevice.getName)
-      msg.setData(bundle)
-      activityMsgHandler.sendMessage(msg)
+      if(reportConnectState && activityMsgHandler!=null) {
+        val msg = activityMsgHandler.obtainMessage(RFCommHelperService.CONNECTION_START)
+        val bundle = new Bundle
+        bundle.putString(RFCommHelperService.DEVICE_ADDR, newRemoteDevice.getAddress)
+        bundle.putString(RFCommHelperService.DEVICE_NAME, newRemoteDevice.getName)
+        msg.setData(bundle)
+        activityMsgHandler.sendMessage(msg)
+      }
     }
     
     // Start the thread to connect with the given device
@@ -369,22 +373,31 @@ class RFCommHelperService extends android.app.Service {
       Log.e(TAG, "getWifiIpAddr() wifiManager==null")
       return null
     }
-    val wifiInfo = wifiManager.getConnectionInfo
-    if(wifiInfo==null) {
-      Log.e(TAG, "getWifiIpAddr() wifiInfo==null")
-      return null
+    try {
+      var wifiInfo:android.net.wifi.WifiInfo = null;
+      wifiInfo = wifiManager.getConnectionInfo
+      if(wifiInfo==null) {
+        Log.e(TAG, "getWifiIpAddr() wifiInfo==null")
+        return null
+      }
+      val ipAddrInt = wifiInfo.getIpAddress
+      if(ipAddrInt==0) {
+        if(D) Log.i(TAG, "getWifiIpAddr() ipAddrInt==0 - we got no std wifi addr")
+        return null
+      }
+      val ipAddrString = "%d.%d.%d.%d".format((ipAddrInt & 0xff),
+                                              (ipAddrInt >> 8 & 0xff),
+                                              (ipAddrInt >> 16 & 0xff),
+                                              (ipAddrInt >> 24 & 0xff))
+      if(D) Log.i(TAG, "getWifiIpAddr() return ipAddrString="+ipAddrString)
+      return ipAddrString
+
+    } catch {
+      case secureEx:java.lang.SecurityException =>
+        Log.e(TAG, "getWifiIpAddr() java.lang.SecurityException: android.permission.ACCESS_WIFI_STATE not set")
+        // android.permission.ACCESS_WIFI_STATE not set - ignore
     }
-    val ipAddrInt = wifiInfo.getIpAddress
-    if(ipAddrInt==0) {
-      if(D) Log.i(TAG, "getWifiIpAddr() ipAddrInt==0 - we got no std wifi addr")
-      return null
-    }
-    val ipAddrString = "%d.%d.%d.%d".format((ipAddrInt & 0xff),
-                                            (ipAddrInt >> 8 & 0xff),
-                                            (ipAddrInt >> 16 & 0xff),
-                                            (ipAddrInt >> 24 & 0xff))
-    if(D) Log.i(TAG, "getWifiIpAddr() return ipAddrString="+ipAddrString)
-    return ipAddrString
+    return null
   }
 
   def connectIp(targetIpAddr:String, ipName:String, reportConnectState:Boolean=true) :Unit = synchronized {
@@ -491,6 +504,7 @@ class RFCommHelperService extends android.app.Service {
 
           } else {
             // activity is not paused
+
             if(D) Log.i(TAG, "AcceptThread pairedBt="+pairedBt+" -> connectedBt()")
             RFCommHelperService.this synchronized {
               connectedBt(btSocket, btDevice)
@@ -521,7 +535,7 @@ class RFCommHelperService extends android.app.Service {
     }
   }
 
-  private def setState(setState:Int) = synchronized {
+  def setState(setState:Int) = synchronized {
     if(setState != state) {
       if(D) Log.i(TAG, "setState() "+state+" -> "+setState)
       state = setState
@@ -538,14 +552,15 @@ class RFCommHelperService extends android.app.Service {
     private var mmSocket:BluetoothSocket = null
     private var connectedUnpaired = false
     private var connectedPaired = false
+    private var pairedBtOnlySession = pairedBtOnly
 
     override def run() {
-      if(D) Log.i(TAG, "ConnectThreadBt run desiredBluetooth="+desiredBluetooth+" pairedBtOnly="+pairedBtOnly)
-      setName("ConnectThreadBt"+pairedBtOnly)
+      if(D) Log.i(TAG, "ConnectThreadBt run desiredBluetooth="+desiredBluetooth+" pairedBtOnly="+pairedBtOnlySession)
+      setName("ConnectThreadBt"+pairedBtOnlySession)
 
       if(desiredBluetooth) {
         try {
-          if(pairedBtOnly) {
+          if(pairedBtOnlySession) {
             if(D) Log.i(TAG, "ConnectThreadBt run createRfcommSocketToServiceRecord(acceptThreadSecureUuid)")
             mmSocket = remoteDevice.createRfcommSocketToServiceRecord(UUID.fromString(acceptThreadSecureUuid))   // requires pairing
           } else {
@@ -554,11 +569,11 @@ class RFCommHelperService extends android.app.Service {
           }
         } catch {
           case e:IOException =>
-            Log.e(TAG, "ConnectThreadBt Socket pairedBtOnly="+pairedBtOnly+" create() failed", e)
+            Log.e(TAG, "ConnectThreadBt Socket pairedBtOnly="+pairedBtOnlySession+" create() failed", e)
         }
 
         if(mmSocket!=null) {       
-          if(!pairedBtOnly) {
+          if(!pairedBtOnlySession) {
             // check bondState
             if(D) Log.i(TAG, "ConnectThreadBt run check bondState")
             val serviceMgrClass = Class.forName("android.os.ServiceManager")
@@ -570,18 +585,28 @@ class RFCommHelperService extends android.app.Service {
             //if(D) Log.i(TAG, "ConnectThreadBt run firstClass="+firstClass)
             val method2 = firstClass.getDeclaredMethod("asInterface", classOf[android.os.IBinder])
             method2.setAccessible(true)
-            val ibt = method2.invoke(null,iBinder)
-
+            val ibt = method2.invoke(null,iBinder)            
             val bondState = ibt.asInstanceOf[{ def getBondState(macAddr:String) :Int }].getBondState(remoteDevice.getAddress)
-            // todo: andr-bug: returns 10 which is < BluetoothDevice.BOND_BONDED, even though it IS 'secretly' bonded
+
+/*
+            // if not fully bonded => removeBond 
+            // bondState may be "hidden bond" (10) which is < BluetoothDevice.BOND_BONDED (12)
             if(D) Log.i(TAG, "ConnectThreadBt run remoteDevice.bondState="+bondState+" #############################")
-            if(bondState < BluetoothDevice.BOND_BONDED) { // important: only call removeBond if not yet bonded
+            if(bondState < BluetoothDevice.BOND_BONDED) {
+*/
               val result = ibt.asInstanceOf[{ def removeBond(macAddr:String) :Boolean }].removeBond(remoteDevice.getAddress)
-              if(D) Log.i(TAG, "ConnectThreadBt run remoteDevice.removeBond result="+result+" ############################")
+              if(D) Log.i(TAG, "ConnectThreadBt run remoteDevice.removeBond result="+result)
+/*
+            } else {
+              // new: already fully paired: skip insecure connect attempt and only try secure connect
+              if(D) Log.i(TAG, "ConnectThreadBt run skip unpaired connect for already paired device ##########################")
+              mmSocket = remoteDevice.createRfcommSocketToServiceRecord(UUID.fromString(acceptThreadSecureUuid))
+              pairedBtOnlySession = true
             }
+*/
           }
 
-          // Always cancel discovery because it will slow down a connection
+          // "Always cancel discovery because it will slow down a connection"
           if(D) Log.i(TAG, "ConnectThreadBt run sleep before cancelDiscovery ...")
           try { Thread.sleep(300) } catch { case ex:Exception => }
           if(D) Log.i(TAG, "ConnectThreadBt run cancelDiscovery ...")
@@ -591,13 +616,13 @@ class RFCommHelperService extends android.app.Service {
             // This is a blocking call and will only return on a successful connection or an exception
             // Get a BluetoothSocket for a connection with the given BluetoothDevice
             mmSocket.connect
-            if(!pairedBtOnly)
+            if(!pairedBtOnlySession)
               connectedUnpaired = true
             else
               connectedPaired = true
           } catch {
             case ex:IOException =>
-              if(!pairedBtOnly) {
+              if(!pairedBtOnlySession) {
                 Log.e(TAG, "ConnectThreadBt run ignore failed insecure connect",ex)
                 // ignore this exception, try to connect again, but this time secure/paired
 
@@ -608,8 +633,15 @@ class RFCommHelperService extends android.app.Service {
                     // ignore any exception on socket.close
                 }
 
+                // delay 2nd attempt
+                try { Thread.sleep(750) } catch { case ex:Exception => }
+                if(state==RFCommHelperService.STATE_CONNECTED) {  // we have been connected in parallel, don't report error
+                  if(D) Log.i(TAG, "ConnectThreadBt abort, already connected")
+                  return
+                }
+
                 try {
-                  mmSocket = remoteDevice.createRfcommSocketToServiceRecord(UUID.fromString(acceptThreadSecureUuid))   // requires pairing
+                  mmSocket = remoteDevice.createRfcommSocketToServiceRecord(UUID.fromString(acceptThreadSecureUuid))
                   if(D) Log.i(TAG, "ConnectThreadBt run 2nd attempt secure connect #########################")
                   mmSocket.connect
                   connectedPaired = true
@@ -617,33 +649,40 @@ class RFCommHelperService extends android.app.Service {
                 } catch {
                   case e: IOException =>
                     mmSocket = null
-                    Log.e(TAG, "ConnectThreadBt run unable to connect() 2nd attempt pairedBtOnly="+pairedBtOnly,ex)
+                    Log.e(TAG, "ConnectThreadBt run unable to connect() 2nd/secure attempt, onstartEnableBackupConnection="+onstartEnableBackupConnection,ex)
                     if(!onstartEnableBackupConnection) {
-                      if(reportConnectState) {
-                        val msg = activityMsgHandler.obtainMessage(RFCommHelperService.CONNECTION_FAILED)
-                        val bundle = new Bundle
-                        bundle.putString(RFCommHelperService.DEVICE_ADDR, remoteDevice.getAddress)
-                        bundle.putString(RFCommHelperService.DEVICE_NAME, remoteDevice.getName)
-                        msg.setData(bundle)
-                        activityMsgHandler.sendMessage(msg)
+                      if(state!=RFCommHelperService.STATE_CONNECTED) {  // we have been connected in parallel, don't report error
+                        if(reportConnectState) {
+                          Log.i(TAG, "ConnectThreadBt report CONNECTION_FAILED")
+                          val msg = activityMsgHandler.obtainMessage(RFCommHelperService.CONNECTION_FAILED)
+                          val bundle = new Bundle
+                          bundle.putString(RFCommHelperService.DEVICE_ADDR, remoteDevice.getAddress)
+                          bundle.putString(RFCommHelperService.DEVICE_NAME, remoteDevice.getName)
+                          msg.setData(bundle)
+                          activityMsgHandler.sendMessage(msg)
+                        }
+                        Log.i(TAG, "ConnectThreadBt cancel connection")
+                        cancel
                       }
-                      cancel
                       return
                     }
                 }
               } else {
-                Log.e(TAG, "ConnectThreadBt run unable to connect() pairedBtOnly="+pairedBtOnly+" IOException",ex)
+                Log.e(TAG, "ConnectThreadBt run unable to connect() pairedBtOnly="+pairedBtOnlySession+" IOException",ex)
                 mmSocket = null
                 if(!onstartEnableBackupConnection) {
-                  if(reportConnectState) {
-                    val msg = activityMsgHandler.obtainMessage(RFCommHelperService.CONNECTION_FAILED)
-                    val bundle = new Bundle
-                    bundle.putString(RFCommHelperService.DEVICE_ADDR, remoteDevice.getAddress)
-                    bundle.putString(RFCommHelperService.DEVICE_NAME, remoteDevice.getName)
-                    msg.setData(bundle)
-                    activityMsgHandler.sendMessage(msg)
+                  if(state!=RFCommHelperService.STATE_CONNECTED) {    // we have been connected in parallel, don't report error
+                    if(reportConnectState) {
+                      val msg = activityMsgHandler.obtainMessage(RFCommHelperService.CONNECTION_FAILED)
+                      val bundle = new Bundle
+                      bundle.putString(RFCommHelperService.DEVICE_ADDR, remoteDevice.getAddress)
+                      bundle.putString(RFCommHelperService.DEVICE_NAME, remoteDevice.getName)
+                      msg.setData(bundle)
+                      activityMsgHandler.sendMessage(msg)
+                    }
+                    Log.i(TAG, "ConnectThreadBt cancel connection")
+                    cancel
                   }
-                  cancel
                   return
                 }
               }
@@ -652,26 +691,26 @@ class RFCommHelperService extends android.app.Service {
       }
 
       // Start the connected thread
-      if(D) Log.i(TAG, "ConnectThreadBt -> connectedBt(mmSocket="+mmSocket+")")
+      if(D) Log.i(TAG, "ConnectThreadBt -> connectedBt(mmSocket="+mmSocket+") paired="+connectedPaired)
       connectedBt(mmSocket, remoteDevice)
     }
 
     def cancel() {  // called by stopActiveConnection()
-      if(D) Log.i(TAG, "ConnectThreadBt cancel() pairedBtOnly="+pairedBtOnly+" mmSocket="+mmSocket)
+      if(D) Log.i(TAG, "ConnectThreadBt cancel() pairedBtOnly="+pairedBtOnlySession+" mmSocket="+mmSocket)
       if(mmSocket!=null) {
         try {
           mmSocket.close
         } catch {
           case e: IOException =>
-            Log.e(TAG, "ConnectThreadBt cancel() socket.close() failed for pairedBtOnly="+pairedBtOnly, e)
+            Log.e(TAG, "ConnectThreadBt cancel() socket.close() failed for pairedBtOnly="+pairedBtOnlySession, e)
         }
       }
-      setState(RFCommHelperService.STATE_LISTEN)   // will send MESSAGE_STATE_CHANGE to activity
+      //setState(RFCommHelperService.STATE_LISTEN)   // will send MESSAGE_STATE_CHANGE to activity
 
       if(connectedUnpaired) {
         new Thread() {
           override def run() {
-            try { Thread.sleep(3000) } catch { case ex:Exception => }
+            try { Thread.sleep(1000) } catch { case ex:Exception => }
 
             // call check bondState
             if(D) Log.i(TAG, "ConnectThreadBt cancel check bondState")
@@ -685,42 +724,58 @@ class RFCommHelperService extends android.app.Service {
             val method2 = firstClass.getDeclaredMethod("asInterface", classOf[android.os.IBinder])
             method2.setAccessible(true)
             val ibt = method2.invoke(null,iBinder)
-
             val bondState = ibt.asInstanceOf[{ def getBondState(macAddr:String) :Int }].getBondState(remoteDevice.getAddress)
-            // todo: returns 10 which is < BluetoothDevice.BOND_BONDED, even though it IS bonded
-            if(D) Log.i(TAG, "ConnectThreadBt cancel remoteDevice.bondState="+bondState+" ###########################")
-            if(bondState < BluetoothDevice.BOND_BONDED) { // important: only call removeBond if not yet bonded
+/*
+            // if not fully bonded => removeBond 
+            // bondState may be "hidden bond" (10) which is < BluetoothDevice.BOND_BONDED (12)
+            if(D) Log.i(TAG, "ConnectThreadBt run remoteDevice.bondState="+bondState+" #############################")
+            if(bondState < BluetoothDevice.BOND_BONDED) {
+*/
               val result = ibt.asInstanceOf[{ def removeBond(macAddr:String) :Boolean }].removeBond(remoteDevice.getAddress)
-              if(D) Log.i(TAG, "ConnectThreadBt cancel remoteDevice.removeBond result="+result+" ############################")
+              if(D) Log.i(TAG, "ConnectThreadBt cancel remoteDevice.removeBond result="+result)
+/*
             }
+*/
           }
         }.start
       }
     }
   }
 
-  // called by: AcceptThread() -> socket = mmServerSocket.accept()
+  // called by: AcceptThread() -> btSocket = mmServerSocket.accept()
   // called by: ConnectThreadBt() / activity options menu (or NFC touch) -> connect() -> ConnectThreadBt()
   // called by: ConnectPopupActivity
-  def connectedBt(socket:BluetoothSocket, remoteDevice:BluetoothDevice) :Unit = synchronized {
+  def connectedBt(btSocket:BluetoothSocket, remoteDevice:BluetoothDevice, 
+                  argMap:scala.collection.immutable.HashMap[String,Any]=null) :Unit = synchronized {
     // in case of nfc triggered connect: for the device with the bigger btAddr, this is the 1st indication of the connect
-    if(D) Log.i(TAG, "connectedBt, socket="+socket+" remoteDevice="+remoteDevice+" pairedBtOnly="+pairedBtOnly)
-    if(/*socket==null ||*/ remoteDevice==null) 
-      return
-      
-    connectedRadio = 1 // bt
-    state = RFCommHelperService.STATE_CONNECTING
+    if(D) Log.i(TAG, "connectedBt, btSocket="+btSocket+" remoteDevice="+remoteDevice+" pairedBtOnly="+pairedBtOnly)
+    var remoteBtAddrString:String = null
+    var remoteBtNameString:String = null
+    if(remoteDevice!=null) {
+      if(btSocket!=null) {
+        if(state==RFCommHelperService.STATE_CONNECTED) {  // todo: for as long as we only support one connection at a time
+          if(D) Log.i(TAG, "connectedBt abort, already connected ##########")
+          btSocket.close
+          return
+        }
 
-    val remoteBtAddrString = remoteDevice.getAddress
-    var remoteBtNameString = remoteDevice.getName
-    // convert spaces to underlines in btNameString (some android activities, for instance the browser, dont like encoded spaces =%20 in file pathes)
-    remoteBtNameString = remoteBtNameString.replaceAll(" ","_")
+        connectedRadio = 1 // bt
+        //state = RFCommHelperService.STATE_CONNECTING
+        setState(RFCommHelperService.STATE_CONNECTED)
+      }
 
-    //if(D) Log.i(TAG, "connectedBt, Start ConnectedThread to manage the connection")
+      remoteBtAddrString = remoteDevice.getAddress
+      remoteBtNameString = remoteDevice.getName
+      // convert spaces to underlines in btNameString (some android activities, for instance the browser, dont like encoded spaces =%20 in file pathes)  // todo: what???
+      if(D) Log.i(TAG, "connectedBt remoteBtAddrString="+remoteBtAddrString+" remoteBtNameString="+remoteBtNameString)
+      if(remoteBtNameString!=null)
+        remoteBtNameString = remoteBtNameString.replaceAll(" ","_")
+    }
+
     try {
       // Get the BluetoothSocket input and output streams
-      val mmInStream = if(socket!=null) socket.getInputStream else null
-      val mmOutStream = if(socket!=null) socket.getOutputStream else null
+      val mmInStream = if(btSocket!=null) btSocket.getInputStream else null
+      val mmOutStream = if(btSocket!=null) btSocket.getOutputStream else null
 
 /*
 // todo: attempt to allow nfc-connect on running backup-connection
@@ -734,17 +789,22 @@ class RFCommHelperService extends android.app.Service {
       } else {
 */
         // start the thread to handle the streams
+        if(D) Log.i(TAG, "connectedBt, Start ConnectedThread")
         appService.createConnectedThread
-        appService.connectedThread.init(mmInStream, mmOutStream, myBtAddr, myBtName, remoteBtAddrString, remoteBtNameString, () => { 
+        appService.connectedThread.init(mmInStream, mmOutStream, 
+                                        myBtAddr, myBtName, 
+                                        remoteBtAddrString, remoteBtNameString, 
+                                        argMap, () => { 
           // socketCloseFkt to be called by the client
           if(D) Log.i(TAG, "connectedBt disconnecting from "+remoteBtNameString+" "+remoteBtAddrString+" ...")
 
           // disconnect the bt-socket
-          if(socket!=null) {
-            socket.close
-            //socket=null
+          if(btSocket!=null) {
+            btSocket.close
+            //btSocket=null
           }
 
+          if(D) Log.i(TAG, "connectedBt disconnecting state="+state)
           if(state>RFCommHelperService.STATE_LISTEN) {
             // tell the activity that the connection was lost
             val msg = activityMsgHandler.obtainMessage(RFCommHelperService.DEVICE_DISCONNECT)
@@ -759,14 +819,13 @@ class RFCommHelperService extends android.app.Service {
           if(D) Log.i(TAG, "connectedBt post-ConnectedThread processing done")
         })
 
-        //if(D) Log.i(TAG, "connectedBt -> start thread")
-        setState(RFCommHelperService.STATE_CONNECTED)
+        if(D) Log.i(TAG, "connectedBt -> start thread")
         appService.connectedThread.start // -> run() will immediately connect to SocketProxy
         appService.connectedThread.doFirstActor
 
         // Send the name of the connected device back to the UI Activity
         // note: the main activity may not be active at this moment (but for instance the ConnectPopupActivity)
-        if(activityMsgHandler!=null) {
+        if(activityMsgHandler!=null && remoteDevice!=null) {
           val msg = activityMsgHandler.obtainMessage(RFCommHelperService.MESSAGE_DEVICE_NAME)
           val bundle = new Bundle
           bundle.putString(RFCommHelperService.DEVICE_NAME, remoteBtNameString)
@@ -819,7 +878,7 @@ class RFCommHelperService extends android.app.Service {
           } else {
 */
             appService.createConnectedThread
-            appService.connectedThread.init(mmInStream, mmOutStream, localWifiAddrString, localWifiNameString, remoteWifiAddrString, myRemoteWifiNameString, () => { 
+            appService.connectedThread.init(mmInStream, mmOutStream, localWifiAddrString, localWifiNameString, remoteWifiAddrString, myRemoteWifiNameString, null, () => { 
               // socketCloseFkt to be called by the client
               if(D) Log.i(TAG, "connectedWifi post-ConnectedThread processing remoteWifiAddrString="+remoteWifiAddrString+" myRemoteWifiNameString="+myRemoteWifiNameString)
 
@@ -898,6 +957,7 @@ class RFCommHelperService extends android.app.Service {
           try {
             if(D) Log.i(TAG, "nfcServiceSetup ndef.addDataType...")
             ndef.addDataType("*/*")   // or "text/plain"
+            //ndef.addDataType("application/vnd.tm-nfc")
             if(D) Log.i(TAG, "nfcServiceSetup ndef.addDataType done")
           } catch {
             case e: MalformedMimeTypeException =>
@@ -916,10 +976,16 @@ class RFCommHelperService extends android.app.Service {
           if(activityResumed) {
             AndrTools.runOnUiThread(activity) { () =>
               // This method must be called from the main thread, and only when the activity is in the foreground (resumed). 
-              // Also, activities must call disableForegroundDispatch(Activity) before the completion of their onPause() callback 
-              // todo: try catch: java.lang.IllegalStateException: Foreground dispatch can only be enabled when your activity is resumed
-              //       should never happen
-              mNfcAdapter.enableForegroundDispatch(activity, nfcPendingIntent, nfcFilters, nfcTechLists)
+              // Also, activities must call disableForegroundDispatch(Activity) before the completion of their onPause callback 
+              try {
+                mNfcAdapter.enableForegroundDispatch(activity, nfcPendingIntent, nfcFilters, nfcTechLists)
+              } catch {
+                case illstex:java.lang.IllegalStateException =>
+                  // "Foreground dispatch can only be enabled when your activity is resumed"
+                  //ignore
+                case ex:Exception =>
+                  //ignore
+              }
               if(D) Log.i(TAG, "nfcServiceSetup enableForegroundDispatch done")
             }
           } else {
@@ -955,12 +1021,25 @@ class RFCommHelperService extends android.app.Service {
         nfcForegroundPushMessage=null
         if(activityResumed)
           mNfcAdapter.setNdefPushMessage(null, activity)
+          //todo: market error: java.lang.NoSuchMethodError: android.nfc.NfcAdapter.setNdefPushMessage
+          //mNfcAdapter.setNdefPushMessage(null, activity, ?)
 
-      } else {        
-        nfcForegroundPushMessage = new NdefMessage(Array(NfcHelper.newTextRecord(nfcString, Locale.ENGLISH, true)))
+      } else {
+        val ndefRecords = if(android.os.Build.VERSION.SDK_INT>=14)
+                            Array(
+                              NfcHelper.newTextRecord(nfcString, Locale.ENGLISH, true),
+                              android.nfc.NdefRecord.createApplicationRecord(appName)  // if not installed, install from market
+                            )
+                          else
+                            Array(
+                              NfcHelper.newTextRecord(nfcString, Locale.ENGLISH, true)
+                            )     
+        nfcForegroundPushMessage = new NdefMessage(ndefRecords)
         if(nfcForegroundPushMessage!=null) {
           if(activityResumed) {
             mNfcAdapter.setNdefPushMessage(nfcForegroundPushMessage, activity)
+            //todo: market error: java.lang.NoSuchMethodError: android.nfc.NfcAdapter.setNdefPushMessage
+            //mNfcAdapter.setNdefPushMessage(nfcForegroundPushMessage, activity, ?)
             if(D) Log.i(TAG, "setNdefPushMessage enable nfc ForegroundNdefPush nfcString=["+nfcString+"] done")
 
           } else {

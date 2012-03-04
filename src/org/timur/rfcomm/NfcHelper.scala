@@ -68,19 +68,24 @@ object NfcHelper {
       if(D) Log.i(TAG, "checkForNdefAction no rawMsgs.length -> ABORT ####")
       return null
     }
+    
+    return checkForNdefMessage(rawMsgs)
+  }
 
-    if(D) Log.i(TAG, "checkForNdefAction rawMsgs.length="+rawMsgs.length)
+//android.os.Parcelable
+  def checkForNdefMessage(rawMsgs:Array[android.os.Parcelable]) :String = {
+    if(D) Log.i(TAG, "checkForNdefMessage rawMsgs.length="+rawMsgs.length)
     val msg = rawMsgs.apply(0).asInstanceOf[NdefMessage]
     val ndefRecords = msg.getRecords
 
     var ndefRecord = ndefRecords.apply(0)
-    if(D) Log.i(TAG, "checkForNdefAction ndefRecord="+ndefRecord)
+    if(D) Log.i(TAG, "checkForNdefMessage ndefRecord="+ndefRecord)
     if(ndefRecord==null || ndefRecord.getTnf!=NdefRecord.TNF_WELL_KNOWN) {
-      if(D) Log.i(TAG, "checkForNdefAction ndefRecord.getTnf!=NdefRecord.TNF_WELL_KNOWN -> ABORT ####")
+      if(D) Log.i(TAG, "checkForNdefMessage ndefRecord.getTnf!=NdefRecord.TNF_WELL_KNOWN -> ABORT ####")
       return null
     }
 
-    if(D) Log.i(TAG, "checkForNdefAction ndefRecord.getTnf==NdefRecord.TNF_WELL_KNOWN")
+    if(D) Log.i(TAG, "checkForNdefMessage ndefRecord.getTnf==NdefRecord.TNF_WELL_KNOWN")
     val payloadByteArray = ndefRecord.getPayload
 
     // payloadByteArray[0] contains the "Status Byte Encodings" field, per the
@@ -92,7 +97,7 @@ object NfcHelper {
     val textEncoding = if ((payloadByteArray(0) & 0200) == 0) "UTF-8" else "UTF-16"
     val languageCodeLength = payloadByteArray(0) & 0077
     val result = new String(payloadByteArray, languageCodeLength+1, payloadByteArray.length-languageCodeLength-1, textEncoding)
-    if(D) Log.i(TAG, "checkForNdefAction resolveIntent0 textEncoding="+textEncoding+" languageCodeLength="+languageCodeLength+" result="+result)
+    if(D) Log.i(TAG, "checkForNdefMessage resolveIntent0 textEncoding="+textEncoding+" languageCodeLength="+languageCodeLength+" result="+result)
     return result
 
 /*

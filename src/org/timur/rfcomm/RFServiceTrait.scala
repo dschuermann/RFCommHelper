@@ -36,13 +36,11 @@ trait RFServiceTrait extends android.app.Service {
 
   var connectedThread:ConnectedThreadTrait = null   // created by RFCommHelperService in connectedBt() or in connectedWiFi()
 
-  def setContextMsgHandler(setContext:Context,setActivityMsgHandler:Handler)
+  def setContextMsgHandler(setContext:Context, setActivityMsgHandler:Handler)
   def setRfCommHelper(setRfCommHelper:RFCommHelper)
   def getRfCommHelper() :RFCommHelper
 
   def createConnectedThread()
-
-  def connectViaBackupHost()
 
   def stopActiveConnection()
 }

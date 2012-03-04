@@ -28,7 +28,7 @@ trait ConnectedThreadTrait extends Thread {
   def init(mmInStream:InputStream, mmOutStream:OutputStream, 
            localDeviceAddr:String, localDeviceName:String, 
            remoteDeviceAddr:String, remoteDeviceName:String, 
-           socketCloseFkt:() => Unit)
+           argMap:scala.collection.immutable.HashMap[String,Any], socketCloseFkt:() => Unit)
 
   def doFirstActor()
   def isRunning() :Boolean
