@@ -1,14 +1,14 @@
 
-RFComm for Android
-==================
+RFCommHelper for Android
+========================
 
-RFComm is a generic Android service that can be used to develop Bluetooth and WiFi-Direct applications.
+RFCommHelper is a generic Android service that can be used to develop Bluetooth and WiFi-Direct applications.
 
-RFComm service...
+RFCommHelper service...
 
 * simplifies the process of establishing p2p connections
 * acts as a hub for other devices to connect
-* manages multiple Bluetooth RFComm connections in the background
+* manages multiple Bluetooth RFCommHelper connections in the background
 * forwards messages targeted towards other devices in the network
 * allows the implementation of application specific protocol extensions
 * makes use of Google protobuf to implement the packaging of messages
@@ -35,14 +35,14 @@ Building
 
 $ ./make
 
-This will create "bin/rfcomm.jar" which can be placed in the "libs/"-folder of your Android 2.2+ project.
+This will create "bin/rfcommhelper.jar" which can be placed in the "libs/"-folder of your Android 2.2+ project.
 
 
 How to use
 ----------
 
-A ready-to-use "rfcomm.jar" is provided in the "bin/" folder.
+A ready-to-use "rfcommhelper.jar" is provided in the "bin/" folder.
 
-In order to make use of this service, you need to copy "bin/rfcomm.jar" to your Android project "libs/" folder.
+In order to make use of this service, you need to copy "bin/rfcommhelper.jar" to your Android project "libs/" folder.
 
 

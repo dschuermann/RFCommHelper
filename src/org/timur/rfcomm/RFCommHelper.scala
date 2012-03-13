@@ -326,7 +326,6 @@ class RFCommHelper(activity:Activity,
 
     val radioSelectDialogBuilder = new AlertDialog.Builder(activity)
     radioSelectDialogBuilder.setTitle("Radio selection")
-    // todo: use a nice fancy "radio wave" background ?
 
     val radioSelectDialogLayout = new LinearLayout(activity)
     radioSelectDialogLayout.setLayoutParams(new LinearLayout.LayoutParams(LayoutParams.FILL_PARENT, LayoutParams.FILL_PARENT))
@@ -908,7 +907,7 @@ class RFCommHelper(activity:Activity,
             mediaConfirmSound.start
           if(rfCommService!=null) {
             if(D) Log.i(TAG, "onNewIntent NDEF_DISCOVERED rfCommService!=null activityResumed="+rfCommService.activityResumed)
-            def remoteBluetoothDevice = mBluetoothAdapter.getRemoteDevice(btAddr)
+            val remoteBluetoothDevice = mBluetoothAdapter.getRemoteDevice(btAddr)
             if(remoteBluetoothDevice!=null) {
               if(D) Log.i(TAG, "onNewIntent NDEF_DISCOVERED remoteBluetoothDevice!=null")
               // todo: this condition should NOT be used if this app was started by nfc

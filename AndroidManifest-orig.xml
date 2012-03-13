@@ -1,6 +1,6 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <!--
-  This file is part of AnyMime, a program to help you swap files
+  This file is part of RFCommHelper, a program to help you swap files
   wirelessly between mobile devices.
   Copyright (C) 2011 timur.mehrvarz@gmail.com
  
@@ -19,113 +19,10 @@
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="org.timur.rfcomm"
-    android:versionCode="1"
-    android:versionName="2.0.4 - $buildtime">
-
-<!--
-  <application android:icon="@drawable/app_icon"
-               android:label="@string/app_name"
-               android:hardwareAccelerated="true" 
-               android:theme="@android:style/Theme.Holo">
-
-    <activity android:name=".AnyMimeActivity"
-              android:label="@string/app_name"
-            	android:configChanges="orientation|keyboardHidden"
-            	android:launchMode="singleTask" >
-      <intent-filter>
-        <action android:name="android.intent.action.MAIN" />
-        <category android:name="android.intent.category.LAUNCHER" />
-      </intent-filter>
-      <intent-filter>
-        <action android:name="android.nfc.action.NDEF_DISCOVERED"/>
-        <data android:mimeType="text/plain" />
-      </intent-filter>
-
-      <intent-filter android:label="Anymime add">
-        <action android:name="android.intent.action.VIEW" />
-        <category android:name="android.intent.category.DEFAULT" />
-        <category android:name="android.intent.category.BROWSABLE" />
-        <data android:scheme="file" />
-        <data android:mimeType="*/*"/>
-      </intent-filter>
-
-      <intent-filter android:label="Anymime add">
-        <action android:name="android.intent.action.SEND" />
-        <category android:name="android.intent.category.DEFAULT" />
-        <data android:mimeType="image/*"/>
-      </intent-filter>
-    </activity>
-
-    <activity android:name=".SelectPairedDevicePopupActivity"
-              android:label="Connect to a paired device"
-              android:theme="@android:style/Theme.Dialog"
-              android:configChanges="orientation|keyboardHidden" />
-
-    <activity android:name=".ShowReceivedFilesHistoryActivity"
-              android:label="Received files history"
-              android:theme="@android:style/Theme.Dialog"
-              android:configChanges="orientation|keyboardHidden" />
-
-    <activity android:name=".ShowReceivedFilesPopupActivity"
-              android:label="Received files"
-              android:theme="@android:style/Theme.Dialog"
-              android:configChanges="orientation|keyboardHidden" />
-
-    <activity android:name=".ShowSelectedSlotActivity"
-              android:label="Select delivery slot"
-              android:configChanges="orientation|keyboardHidden" />
-
-    <activity android:name=".ShowSelectedFilesActivity"
-              android:label="Files selected for delivery"
-              android:configChanges="orientation|keyboardHidden" />
-
-    <activity android:name=".DisplayTextFileActivity"
-              android:label="Display text file"
-              android:theme="@android:style/Theme.Dialog"
-              android:configChanges="orientation|keyboardHidden">
-      <intent-filter>
-        <action android:name="android.intent.action.VIEW" />
-        <category android:name="android.intent.category.DEFAULT" />
-        <category android:name="android.intent.category.BROWSABLE" />
-        <data android:mimeType="text/plain"/>
-        <data android:mimeType="application/pgp"/>
-      </intent-filter>
-    </activity>
-
-
-    <activity android:name=".FileDialog"
-              android:label="File select"
-              android:theme="@android:style/Theme.Dialog"
-              android:configChanges="orientation|keyboardHidden" >
-      <intent-filter>
-        <action android:name="android.intent.action.GET_CONTENT" />
-        <data android:mimeType="*/*" />
-        <category android:name="android.intent.category.DEFAULT" />
-        <category android:name="android.intent.category.OPENABLE" />
-      </intent-filter>
-    </activity>
-
-    <service android:name=".RFCommHelperService" />
-    <service android:name=".FileExchangeService" />
-  </application>
--->
+    android:versionCode="2"
+    android:versionName="2.0.5 - $buildtime">
 
   <uses-sdk android:minSdkVersion="8" android:targetSdkVersion="11" />
-
-<!--
-  <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" /> 
-
-    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
-    <uses-permission android:name="android.permission.BLUETOOTH" />
-    <uses-permission android:name="android.permission.NFC" />
-
-    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
-    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
-    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-feature android:name="android.hardware.wifi.direct" android:required="true"/>
-    <uses-permission android:name="android.permission.INTERNET" />
--->
 
 </manifest>
 
