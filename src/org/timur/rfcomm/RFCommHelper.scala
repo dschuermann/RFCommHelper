@@ -936,8 +936,8 @@ class RFCommHelper(activity:Activity,
             }
           }
         }
+        return true
       }
-      return true
     }
     return false
   }
